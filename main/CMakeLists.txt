@@ -2,6 +2,8 @@ idf_component_register(
     SRCS
         "main.c"
         "app_state.c"
+        "app_state_logic.c"
+        "app_state_storage.c"
 
         "drivers/i2c_bus.c"
         "drivers/oled_sh1106.c"
