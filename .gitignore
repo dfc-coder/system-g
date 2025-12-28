@@ -1,55 +1,80 @@
+# =========================
+# ESP-IDF / C / Build output
+# =========================
+
 # Prerequisites
 *.d
 
-# Object files
+# Object files / binaries
 *.o
-*.ko
 *.obj
 *.elf
-
-# Linker output
-*.ilk
 *.map
-*.exp
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Libraries
-*.lib
+*.hex
+*.bin
 *.a
-*.la
-*.lo
-
-# Shared objects (inc. Windows DLLs)
-*.dll
 *.so
 *.so.*
 *.dylib
-
-# Executables
+*.dll
 *.exe
 *.out
 *.app
-*.i*86
-*.x86_64
-*.hex
 
-# Debug files
+# Debug / symbols
 *.dSYM/
 *.su
 *.idb
 *.pdb
-
-# Kernel Module Compile Results
-*.mod*
-*.cmd
-.tmp_versions/
-modules.order
-Module.symvers
-Mkfile.old
-dkms.conf
-
-# debug information files
 *.dwo
+
+# =========================
+# ESP-IDF specific
+# =========================
+
+# Build folders (default esp-idf)
+build/
+**/build/
+.cache/
+
+# CMake / Ninja generated
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+build.ninja
+.ninja_deps
+.ninja_log
+rules.ninja
+
+# ESP-IDF managed components (auto-downloaded)
+managed_components/
+**/managed_components/
+
+# Python virtualenvs (common in esp-idf projects)
+.venv/
+venv/
+env/
+pytest_hello_world.py
+
+# IDE / editor
+.vscode/
+.idea/
+*.code-workspace
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Serial logs / misc
+*.log
+
+# =========================
+# Optional: local sdkconfig overrides (keep sdkconfig itself tracked)
+# =========================
+sdkconfig.old
+sdkconfig.defaults
+sdkconfig.defaults.*
+sdkconfig.ci
+sdkconfig.local
+sdkconfig.local.*
