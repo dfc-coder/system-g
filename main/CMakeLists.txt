@@ -18,6 +18,7 @@ idf_component_register(
 
         "ui/framebuffer.c"
         "ui/screens.c"
+        "ui/ui_controller.c"
         "ui/ui_task.c"
     
     INCLUDE_DIRS "."
