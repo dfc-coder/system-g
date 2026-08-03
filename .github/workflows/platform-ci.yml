@@ -10,6 +10,7 @@ on:
       - "crates/growntrol-simulator/**"
       - "apps/growntrol-dashboard/**"
       - "deploy/**"
+      - "scripts/platform-smoke-test.sh"
       - "compose.yaml"
       - "specs/005-mqtt-backend-dashboard.md"
       - ".github/workflows/platform-ci.yml"
@@ -24,6 +25,7 @@ on:
       - "crates/growntrol-simulator/**"
       - "apps/growntrol-dashboard/**"
       - "deploy/**"
+      - "scripts/platform-smoke-test.sh"
       - "compose.yaml"
       - "specs/005-mqtt-backend-dashboard.md"
       - ".github/workflows/platform-ci.yml"
@@ -77,3 +79,14 @@ jobs:
 
       - name: Build dashboard
         run: npm run build
+
+  integration:
+    needs: [rust-platform, dashboard]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Run broker, backend, simulator, and dashboard smoke test
+        run: bash scripts/platform-smoke-test.sh
