@@ -10,6 +10,7 @@ publish = false
 anyhow = "1"
 async-stream = "0.3"
 axum = "0.8.9"
+futures-core = "0.3"
 growntrol-protocol = { path = "../growntrol-protocol" }
 rumqttc = "0.25.1"
 serde.workspace = true
