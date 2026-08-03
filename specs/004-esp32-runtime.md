@@ -38,18 +38,22 @@ Connect the tested domain core to one classic ESP32 without introducing continuo
 ## Adapter rules
 
 - GPIO34 uses ADC1 because Wi-Fi may be enabled later.
+- The soil adapter uses the ESP-IDF `esp_adc/adc_oneshot.h` driver, not the deprecated legacy ADC API.
 - Each logical soil measurement consists of seven raw ADC samples and uses their median.
 - Soil calibration endpoints are raw ADC values, not calibrated millivolts.
+- The DS3231 adapter uses the ESP-IDF `driver/i2c_master.h` bus/device API, not the deprecated legacy I2C driver.
+- The DS3231 is registered as a 7-bit device at address `0x68`, with 100 kHz SCL and a finite 100 ms transfer timeout.
+- I2C bus and device handles and the ADC unit handle are released through RAII cleanup paths.
 - Relay polarity is explicit; the default lights and fans relay configuration is active-low.
 - The pump output defaults to active-high for a MOSFET or suitable driver.
 - The float input uses a pull-up and treats closed-to-ground as water available.
 - A disconnected float wire therefore blocks irrigation instead of reporting water available.
-- DS3231 transactions have a finite 100 ms I2C timeout.
 
 ## Acceptance criteria
 
 - Host tests verify soil median filtering, raw calibration, transition timing, scheduler replacement/cancellation, pump watchdog ordering, and terminal fault handling.
 - Xtensa CI formats and compiles the firmware for `xtensa-esp32-espidf` in release mode.
+- Firmware startup does not emit the ESP-IDF legacy I2C or legacy ADC driver warnings.
 - A repeated fan decision does not write the relay again.
 - The watchdog is armed before the pump is energized.
 - A pump timeout de-energizes the physical output and produces a terminal blocked irrigation state.
