@@ -32,6 +32,8 @@ pub enum IrrigationBlockReason {
     LightsOn,
     PulseLimitReached,
     PumpTimeout,
+    ClockFault,
+    HardwareFault,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
