@@ -1,5 +1,6 @@
 [workspace]
 members = ["crates/growntrol-core"]
+exclude = ["crates/growntrol-firmware"]
 resolver = "2"
 
 [workspace.package]

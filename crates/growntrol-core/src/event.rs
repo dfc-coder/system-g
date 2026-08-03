@@ -8,6 +8,7 @@ pub enum ControlEvent {
     SoilMeasured { moisture_pct: u8 },
     TankMeasured(TankState),
     PumpPulseFinished,
+    PumpSafetyTimeout,
     AbsorptionFinished,
     ConfigurationChanged,
 }

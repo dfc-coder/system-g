@@ -8,17 +8,24 @@ pub enum IrrigationEvent {
     LightsTurnedOn,
     TankChecked(TankState),
     PumpPulseFinished,
+    PumpSafetyTimeout,
     AbsorptionFinished { soil_moisture_pct: Option<u8> },
+    Abort(IrrigationBlockReason),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IrrigationAction {
     SetPump(bool),
+    ArmPumpSafety {
+        after_seconds: u32,
+    },
+    DisarmPumpSafety,
     MeasureTank,
     Schedule {
         after_seconds: u32,
         kind: ScheduledEventKind,
     },
+    CancelScheduled(ScheduledEventKind),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,8 +70,26 @@ impl IrrigationMachine {
                 if matches!(self.state, IrrigationState::Pumping { .. }) {
                     actions.push(IrrigationAction::SetPump(false));
                 }
+                actions.push(IrrigationAction::DisarmPumpSafety);
+                actions.push(IrrigationAction::CancelScheduled(
+                    ScheduledEventKind::PumpPulseFinished,
+                ));
+                actions.push(IrrigationAction::CancelScheduled(
+                    ScheduledEventKind::AbsorptionFinished,
+                ));
                 self.completed_pulses = 0;
                 IrrigationState::Idle
+            }
+            IrrigationEvent::Abort(reason) => {
+                actions.push(IrrigationAction::SetPump(false));
+                actions.push(IrrigationAction::DisarmPumpSafety);
+                actions.push(IrrigationAction::CancelScheduled(
+                    ScheduledEventKind::PumpPulseFinished,
+                ));
+                actions.push(IrrigationAction::CancelScheduled(
+                    ScheduledEventKind::AbsorptionFinished,
+                ));
+                IrrigationState::Blocked(reason)
             }
             IrrigationEvent::LightsTurnedOff { soil_moisture_pct } => {
                 self.completed_pulses = 0;
@@ -82,6 +107,9 @@ impl IrrigationMachine {
                     if self.completed_pulses < config.max_pulses_per_cycle =>
                 {
                     let pulse = self.completed_pulses + 1;
+                    actions.push(IrrigationAction::ArmPumpSafety {
+                        after_seconds: u32::from(config.pump_maximum_seconds),
+                    });
                     actions.push(IrrigationAction::SetPump(true));
                     actions.push(IrrigationAction::Schedule {
                         after_seconds: u32::from(config.pump_pulse_seconds),
@@ -89,12 +117,22 @@ impl IrrigationMachine {
                     });
                     IrrigationState::Pumping { pulse }
                 }
-                (IrrigationState::CheckingTank, TankState::WaterLow)
-                | (IrrigationState::Absorbing { .. }, TankState::WaterLow) => {
+                (IrrigationState::CheckingTank, TankState::WaterLow) => {
                     IrrigationState::Blocked(IrrigationBlockReason::TankLow)
                 }
-                (IrrigationState::CheckingTank, TankState::SensorFault)
-                | (IrrigationState::Absorbing { .. }, TankState::SensorFault) => {
+                (IrrigationState::Absorbing { .. }, TankState::WaterLow) => {
+                    actions.push(IrrigationAction::CancelScheduled(
+                        ScheduledEventKind::AbsorptionFinished,
+                    ));
+                    IrrigationState::Blocked(IrrigationBlockReason::TankLow)
+                }
+                (IrrigationState::CheckingTank, TankState::SensorFault) => {
+                    IrrigationState::Blocked(IrrigationBlockReason::TankSensorFault)
+                }
+                (IrrigationState::Absorbing { .. }, TankState::SensorFault) => {
+                    actions.push(IrrigationAction::CancelScheduled(
+                        ScheduledEventKind::AbsorptionFinished,
+                    ));
                     IrrigationState::Blocked(IrrigationBlockReason::TankSensorFault)
                 }
                 (IrrigationState::CheckingTank, TankState::WaterAvailable) => {
@@ -106,12 +144,24 @@ impl IrrigationMachine {
                 IrrigationState::Pumping { pulse } => {
                     self.completed_pulses = pulse;
                     actions.push(IrrigationAction::SetPump(false));
-                    actions.push(IrrigationAction::MeasureTank);
+                    actions.push(IrrigationAction::DisarmPumpSafety);
                     actions.push(IrrigationAction::Schedule {
                         after_seconds: u32::from(config.absorption_minutes) * 60,
                         kind: ScheduledEventKind::AbsorptionFinished,
                     });
+                    actions.push(IrrigationAction::MeasureTank);
                     IrrigationState::Absorbing { pulse }
+                }
+                state => state,
+            },
+            IrrigationEvent::PumpSafetyTimeout => match self.state {
+                IrrigationState::Pumping { .. } => {
+                    actions.push(IrrigationAction::SetPump(false));
+                    actions.push(IrrigationAction::DisarmPumpSafety);
+                    actions.push(IrrigationAction::CancelScheduled(
+                        ScheduledEventKind::PumpPulseFinished,
+                    ));
+                    IrrigationState::Blocked(IrrigationBlockReason::PumpTimeout)
                 }
                 state => state,
             },
@@ -147,6 +197,7 @@ mod tests {
             start_below_pct: 30,
             target_pct: 42,
             pump_pulse_seconds: 8,
+            pump_maximum_seconds: 15,
             absorption_minutes: 5,
             max_pulses_per_cycle: 3,
             only_when_lights_off: true,
@@ -199,12 +250,40 @@ mod tests {
     }
 
     #[test]
+    fn pump_start_arms_watchdog_before_energizing_output() {
+        let mut machine = IrrigationMachine::default();
+        machine.handle(
+            IrrigationEvent::LightsTurnedOff {
+                soil_moisture_pct: Some(20),
+            },
+            config(),
+        );
+        let start = machine.handle(
+            IrrigationEvent::TankChecked(TankState::WaterAvailable),
+            config(),
+        );
+
+        assert_eq!(
+            start.actions,
+            vec![
+                IrrigationAction::ArmPumpSafety { after_seconds: 15 },
+                IrrigationAction::SetPump(true),
+                IrrigationAction::Schedule {
+                    after_seconds: 8,
+                    kind: ScheduledEventKind::PumpPulseFinished,
+                },
+            ]
+        );
+    }
+
+    #[test]
     fn pump_pulse_is_bounded_and_absorption_is_five_minutes() {
         let mut machine = IrrigationMachine::default();
         start_pulse(&mut machine);
 
         let finish = machine.handle(IrrigationEvent::PumpPulseFinished, config());
         assert!(finish.actions.contains(&IrrigationAction::SetPump(false)));
+        assert!(finish.actions.contains(&IrrigationAction::DisarmPumpSafety));
         assert!(finish.actions.contains(&IrrigationAction::MeasureTank));
         assert!(finish.actions.contains(&IrrigationAction::Schedule {
             after_seconds: 300,
@@ -213,17 +292,44 @@ mod tests {
     }
 
     #[test]
-    fn lights_turning_on_stops_active_pump() {
+    fn pump_safety_timeout_stops_and_blocks_cycle() {
+        let mut machine = IrrigationMachine::default();
+        start_pulse(&mut machine);
+
+        let decision = machine.handle(IrrigationEvent::PumpSafetyTimeout, config());
+
+        assert_eq!(
+            decision.state,
+            IrrigationState::Blocked(IrrigationBlockReason::PumpTimeout)
+        );
+        assert!(decision.actions.contains(&IrrigationAction::SetPump(false)));
+        assert!(decision
+            .actions
+            .contains(&IrrigationAction::DisarmPumpSafety));
+    }
+
+    #[test]
+    fn lights_turning_on_stops_active_pump_and_cancels_pending_work() {
         let mut machine = IrrigationMachine::default();
         start_pulse(&mut machine);
 
         let decision = machine.handle(IrrigationEvent::LightsTurnedOn, config());
         assert_eq!(decision.state, IrrigationState::Idle);
-        assert_eq!(decision.actions, vec![IrrigationAction::SetPump(false)]);
+        assert!(decision.actions.contains(&IrrigationAction::SetPump(false)));
+        assert!(decision
+            .actions
+            .contains(&IrrigationAction::CancelScheduled(
+                ScheduledEventKind::PumpPulseFinished
+            )));
+        assert!(decision
+            .actions
+            .contains(&IrrigationAction::CancelScheduled(
+                ScheduledEventKind::AbsorptionFinished
+            )));
     }
 
     #[test]
-    fn post_pulse_tank_low_blocks_cycle_and_late_absorption_cannot_restart_it() {
+    fn post_pulse_tank_low_cancels_absorption_and_blocks_cycle() {
         let mut machine = IrrigationMachine::default();
         start_pulse(&mut machine);
         machine.handle(IrrigationEvent::PumpPulseFinished, config());
@@ -234,17 +340,37 @@ mod tests {
             tank_decision.state,
             IrrigationState::Blocked(IrrigationBlockReason::TankLow)
         );
+        assert!(tank_decision
+            .actions
+            .contains(&IrrigationAction::CancelScheduled(
+                ScheduledEventKind::AbsorptionFinished
+            )));
+    }
 
-        let late_absorption = machine.handle(
-            IrrigationEvent::AbsorptionFinished {
-                soil_moisture_pct: Some(10),
-            },
+    #[test]
+    fn abort_stops_pump_and_leaves_cycle_terminally_blocked() {
+        let mut machine = IrrigationMachine::default();
+        start_pulse(&mut machine);
+
+        let decision = machine.handle(
+            IrrigationEvent::Abort(IrrigationBlockReason::ClockFault),
             config(),
         );
+
         assert_eq!(
-            late_absorption.state,
-            IrrigationState::Blocked(IrrigationBlockReason::TankLow)
+            decision.state,
+            IrrigationState::Blocked(IrrigationBlockReason::ClockFault)
         );
-        assert!(late_absorption.actions.is_empty());
+        assert!(decision.actions.contains(&IrrigationAction::SetPump(false)));
+        assert!(decision
+            .actions
+            .contains(&IrrigationAction::DisarmPumpSafety));
+
+        let late_pulse = machine.handle(IrrigationEvent::PumpPulseFinished, config());
+        assert_eq!(
+            late_pulse.state,
+            IrrigationState::Blocked(IrrigationBlockReason::ClockFault)
+        );
+        assert!(late_pulse.actions.is_empty());
     }
 }

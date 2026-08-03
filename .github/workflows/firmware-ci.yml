@@ -1,0 +1,65 @@
+name: ESP32 firmware CI
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "README.md"
+      - "crates/growntrol-firmware/**"
+      - "crates/growntrol-core/**"
+      - "specs/004-esp32-runtime.md"
+      - "docs/hardware-wiring.md"
+      - "docs/hardware-integration-checklist.md"
+      - ".github/workflows/firmware-ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.toml"
+      - "README.md"
+      - "crates/growntrol-firmware/**"
+      - "crates/growntrol-core/**"
+      - "specs/004-esp32-runtime.md"
+      - "docs/hardware-wiring.md"
+      - "docs/hardware-integration-checklist.md"
+      - ".github/workflows/firmware-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firmware-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-esp32:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install Xtensa Rust toolchain
+        uses: esp-rs/xtensa-toolchain@v1.6
+        with:
+          default: true
+          buildtargets: esp32
+          ldproxy: true
+
+      - name: Check firmware formatting
+        working-directory: crates/growntrol-firmware
+        run: cargo fmt -- --check
+
+      - name: Compile release firmware
+        working-directory: crates/growntrol-firmware
+        run: cargo build --release
+
+      - name: Reject legacy I2C and ADC drivers
+        working-directory: crates/growntrol-firmware
+        run: |
+          ELF="target/xtensa-esp32-espidf/release/growntrol-firmware"
+          LEGACY_SYMBOLS='(i2c_driver_install|i2c_param_config|adc1_config_width|adc1_config_channel_atten|adc1_get_raw|adc2_config_channel_atten|adc2_get_raw)$'
+          if xtensa-esp32-elf-nm --defined-only "$ELF" | grep -E "$LEGACY_SYMBOLS"; then
+            echo "Legacy ESP-IDF I2C/ADC driver symbols found in firmware ELF"
+            exit 1
+          fi
