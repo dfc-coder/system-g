@@ -15,24 +15,66 @@ Control and monitoring system for an indoor grow, designed around one classic ES
 - ESP32 adapters for GPIO outputs, DHT22, ADC1 soil input, tank float, and DS3231.
 - Current ESP-IDF `esp_adc/adc_oneshot.h` and `driver/i2c_master.h` APIs instead of deprecated legacy ADC/I2C drivers.
 - Event/deadline runtime that blocks until a hardware event or the nearest deadline.
-- Separate host CI and Xtensa ESP32 firmware CI.
+- Versioned MQTT topics and JSON payloads shared by devices and services.
+- Rust backend that aggregates MQTT state and exposes HTTP JSON and Server-Sent Events.
+- Vue 3 dashboard for live state, bounded overrides, and safe irrigation requests.
+- Local Mosquitto, backend, and dashboard stack through Docker Compose.
+- Separate host, firmware, platform, and dashboard CI checks.
 
-The local web dashboard, persistent configuration, Wi-Fi, and MQTT remain subsequent phases.
+ESP32 Wi-Fi provisioning and its MQTT transport adapter remain a separate hardware-validated phase. The backend and dashboard never drive GPIO directly.
 
 ## Repository layout
 
 ```text
-crates/growntrol-core/       Host-testable domain rules
-crates/growntrol-firmware/   ESP-IDF firmware for classic ESP32
-specs/                       SDD specifications
-docs/                        Wiring and hardware integration procedures
+apps/growntrol-dashboard/     Vue 3 and Vite operational dashboard
+crates/growntrol-backend/     MQTT-to-HTTP/SSE Rust backend
+crates/growntrol-core/        Host-testable domain rules
+crates/growntrol-firmware/    ESP-IDF firmware for classic ESP32
+crates/growntrol-protocol/    Shared MQTT topics and payload contracts
+deploy/                       Local broker configuration
+specs/                        SDD specifications
+docs/                         Wiring and hardware integration procedures
 ```
 
-## Test the domain
+## Test the Rust code
 
 ```bash
-cargo test -p growntrol-core
+cargo test -p growntrol-core -p growntrol-protocol -p growntrol-backend
 ```
+
+## Build the dashboard
+
+```bash
+cd apps/growntrol-dashboard
+npm install
+npm run build
+```
+
+Node.js 20.19 or newer is required by the selected Vite version.
+
+## Run the local platform
+
+```bash
+docker compose up --build
+```
+
+Services:
+
+- MQTT broker: `localhost:1883`
+- Backend API and SSE: `http://localhost:8080`
+- Dashboard: `http://localhost:5173`
+
+The included Mosquitto configuration permits anonymous access only for local development. A network-exposed deployment must use authentication, authorization, and TLS.
+
+## MQTT contract
+
+Device topics are rooted at:
+
+```text
+growntrol/v1/devices/{device_id}
+```
+
+The detailed topic directions, retention rules, payloads, and command safety boundary are defined in `specs/005-mqtt-backend-dashboard.md`.
 
 ## Build and flash the ESP32 firmware
 
