@@ -13,6 +13,7 @@ Control and monitoring system for an indoor grow, designed around one classic ES
 - Tank validation before and after every watering pulse.
 - Irrigation state machine with bounded pulses and an independent ESP timer pump watchdog.
 - ESP32 adapters for GPIO outputs, DHT22, ADC1 soil input, tank float, and DS3231.
+- Current ESP-IDF `esp_adc/adc_oneshot.h` and `driver/i2c_master.h` APIs instead of deprecated legacy ADC/I2C drivers.
 - Event/deadline runtime that blocks until a hardware event or the nearest deadline.
 - Separate host CI and Xtensa ESP32 firmware CI.
 
@@ -48,4 +49,4 @@ Before connecting loads, read:
 
 The soil calibration values in the firmware are provisional and must be measured with the actual sensor and substrate.
 
-A successful CI build proves source compatibility with the selected Rust, ESP-IDF, and classic ESP32 target. It does not prove physical wiring, relay polarity, signal voltage, sensor calibration, electrical-noise immunity, or mains safety. Those items require the documented low-voltage hardware integration procedure.
+A successful CI build proves source compatibility with the selected Rust, ESP-IDF, and classic ESP32 target. A clean hardware smoke test must additionally confirm that startup no longer emits the ESP-IDF legacy I2C or legacy ADC driver warnings. Neither result proves physical wiring, relay polarity, signal voltage, sensor calibration, electrical-noise immunity, or mains safety; those items require the documented low-voltage integration procedure.
