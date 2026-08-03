@@ -1,0 +1,77 @@
+name: Platform CI
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/growntrol-protocol/**"
+      - "crates/growntrol-backend/**"
+      - "apps/growntrol-dashboard/**"
+      - "deploy/**"
+      - "compose.yaml"
+      - "specs/005-mqtt-backend-dashboard.md"
+      - ".github/workflows/platform-ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/growntrol-protocol/**"
+      - "crates/growntrol-backend/**"
+      - "apps/growntrol-dashboard/**"
+      - "deploy/**"
+      - "compose.yaml"
+      - "specs/005-mqtt-backend-dashboard.md"
+      - ".github/workflows/platform-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-platform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Compile protocol and backend
+        run: cargo check -p growntrol-protocol -p growntrol-backend --all-targets
+
+      - name: Test protocol and backend
+        run: cargo test -p growntrol-protocol -p growntrol-backend --all-targets
+
+  dashboard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/growntrol-dashboard
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dashboard dependencies
+        run: npm install
+
+      - name: Build dashboard
+        run: npm run build
