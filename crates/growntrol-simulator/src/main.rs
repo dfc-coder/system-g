@@ -85,7 +85,11 @@ async fn main() -> Result<()> {
     let topics = DeviceTopics::new(&device_id);
 
     let offline_payload = serde_json::to_vec(&Availability::Offline)?;
-    let mut options = MqttOptions::new(format!("growntrol-simulator-{device_id}"), mqtt_host, mqtt_port);
+    let mut options = MqttOptions::new(
+        format!("growntrol-simulator-{device_id}"),
+        mqtt_host,
+        mqtt_port,
+    );
     options
         .set_keep_alive(Duration::from_secs(15))
         .set_clean_session(false)
@@ -100,13 +104,7 @@ async fn main() -> Result<()> {
     client
         .subscribe(topics.commands.clone(), QoS::AtLeastOnce)
         .await?;
-    publish_json(
-        &client,
-        &topics.availability,
-        &Availability::Online,
-        true,
-    )
-    .await?;
+    publish_json(&client, &topics.availability, &Availability::Online, true).await?;
 
     let mut simulator = SimulatorState::default();
     let mut telemetry_interval = tokio::time::interval(Duration::from_secs(5));
@@ -168,13 +166,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    publish_json(
-        &client,
-        &topics.availability,
-        &Availability::Offline,
-        true,
-    )
-    .await?;
+    publish_json(&client, &topics.availability, &Availability::Offline, true).await?;
     client.disconnect().await?;
     Ok(())
 }
