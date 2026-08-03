@@ -1,5 +1,12 @@
+use std::time::Duration;
+
 use anyhow::Result;
 use growntrol_core::{ClimateReading, TankState};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HardwareEvent {
+    PumpSafetyTimeout,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RtcDateTime {
@@ -29,6 +36,11 @@ impl RtcDateTime {
 pub trait Actuator {
     fn set(&mut self, on: bool) -> Result<bool>;
     fn is_on(&self) -> bool;
+}
+
+pub trait PumpActuator: Actuator {
+    fn arm_safety_timeout(&mut self, duration: Duration) -> Result<()>;
+    fn disarm_safety_timeout(&mut self) -> Result<()>;
 }
 
 pub trait ClimateSensor {
