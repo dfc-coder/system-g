@@ -36,16 +36,10 @@ fn main() -> Result<()> {
     let mut pump = ActiveOutput::new(peripherals.pins.gpio27, PUMP_ACTIVE_LOW)?;
 
     let mut climate = Dht22::new(peripherals.pins.gpio4)?;
-    let mut tank = TankFloat::new(
-        peripherals.pins.gpio32,
-        TANK_AVAILABLE_WHEN_LOW,
-    )?;
+    let mut tank = TankFloat::new(peripherals.pins.gpio32, TANK_AVAILABLE_WHEN_LOW)?;
 
     const SOIL_ATTENUATION: adc_atten_t = attenuation::DB_12;
-    let adc = AdcDriver::new(
-        peripherals.adc1,
-        &AdcConfig::new().calibration(true),
-    )?;
+    let adc = AdcDriver::new(peripherals.adc1, &AdcConfig::new().calibration(true))?;
     let adc_channel: AdcChannelDriver<{ SOIL_ATTENUATION }, _> =
         AdcChannelDriver::new(peripherals.pins.gpio34)?;
     let mut soil = SoilAdc::new(
