@@ -48,8 +48,7 @@ impl Settings {
 
         Ok(Self {
             bind,
-            mqtt_host: env::var("GROWNTROL_MQTT_HOST")
-                .unwrap_or_else(|_| "127.0.0.1".to_owned()),
+            mqtt_host: env::var("GROWNTROL_MQTT_HOST").unwrap_or_else(|_| "127.0.0.1".to_owned()),
             mqtt_port,
             mqtt_client_id: env::var("GROWNTROL_MQTT_CLIENT_ID")
                 .unwrap_or_else(|_| "growntrol-backend".to_owned()),
@@ -138,10 +137,7 @@ async fn main() -> Result<()> {
         .route("/health", get(health))
         .route("/api/devices", get(list_devices))
         .route("/api/devices/{device_id}", get(get_device))
-        .route(
-            "/api/devices/{device_id}/commands",
-            post(publish_command),
-        )
+        .route("/api/devices/{device_id}/commands", post(publish_command))
         .route("/api/events", get(event_stream))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
@@ -193,7 +189,8 @@ async fn run_mqtt(mut event_loop: EventLoop, state: AppState) {
     loop {
         match event_loop.poll().await {
             Ok(Event::Incoming(Incoming::Publish(publish))) => {
-                if let Err(error) = process_publish(&state, &publish.topic, &publish.payload).await {
+                if let Err(error) = process_publish(&state, &publish.topic, &publish.payload).await
+                {
                     warn!(topic = %publish.topic, %error, "ignored invalid MQTT message");
                 }
             }
@@ -375,7 +372,10 @@ async fn event_stream(
 
 fn internal_error(error: impl std::fmt::Display) -> (StatusCode, String) {
     error!(%error, "backend request failed");
-    (StatusCode::INTERNAL_SERVER_ERROR, "internal backend error".to_owned())
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "internal backend error".to_owned(),
+    )
 }
 
 fn unix_time_ms() -> u64 {
