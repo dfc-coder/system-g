@@ -32,5 +32,18 @@ services:
     ports:
       - "5173:80"
 
+  simulator:
+    profiles: ["demo"]
+    build:
+      context: .
+      dockerfile: crates/growntrol-simulator/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - broker
+    environment:
+      GROWNTROL_DEVICE_ID: demo-grow-1
+      GROWNTROL_MQTT_HOST: broker
+      GROWNTROL_MQTT_PORT: 1883
+
 volumes:
   mosquitto-data:
