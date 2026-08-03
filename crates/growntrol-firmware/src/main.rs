@@ -7,8 +7,8 @@ use esp_idf_hal::adc::config::Config as AdcConfig;
 use esp_idf_hal::adc::{attenuation, AdcChannelDriver, AdcDriver};
 use esp_idf_hal::i2c::{I2cConfig, I2cDriver};
 use esp_idf_hal::peripherals::Peripherals;
-use esp_idf_hal::prelude::*;
 use esp_idf_hal::sys::adc_atten_t;
+use esp_idf_hal::units::Hertz;
 use esp_idf_svc::log::EspLogger;
 use growntrol_core::{SoilCalibration, SystemConfig};
 use log::info;
@@ -39,7 +39,7 @@ fn main() -> Result<()> {
     let mut tank = TankFloat::new(peripherals.pins.gpio32, TANK_AVAILABLE_WHEN_LOW)?;
 
     const SOIL_ATTENUATION: adc_atten_t = attenuation::DB_12;
-    let adc = AdcDriver::new(peripherals.adc1, &AdcConfig::new().calibration(true))?;
+    let adc = AdcDriver::new(peripherals.adc1, &AdcConfig::new().calibration(false))?;
     let adc_channel: AdcChannelDriver<{ SOIL_ATTENUATION }, _> =
         AdcChannelDriver::new(peripherals.pins.gpio34)?;
     let mut soil = SoilAdc::new(
@@ -51,7 +51,7 @@ fn main() -> Result<()> {
         },
     )?;
 
-    let i2c_config = I2cConfig::new().baudrate(100.kHz().into());
+    let i2c_config = I2cConfig::new().baudrate(Hertz(100_000));
     let i2c = I2cDriver::new(
         peripherals.i2c0,
         peripherals.pins.gpio21,
