@@ -36,11 +36,7 @@ fn main() -> Result<()> {
     // Outputs are constructed first and immediately driven to their inactive level.
     let mut lights = ActiveOutput::new(peripherals.pins.gpio25, RELAYS_ACTIVE_LOW)?;
     let mut fans = ActiveOutput::new(peripherals.pins.gpio26, RELAYS_ACTIVE_LOW)?;
-    let mut pump = PumpOutput::new(
-        peripherals.pins.gpio27,
-        PUMP_ACTIVE_LOW,
-        hardware_event_tx,
-    )?;
+    let mut pump = PumpOutput::new(peripherals.pins.gpio27, PUMP_ACTIVE_LOW, hardware_event_tx)?;
 
     let mut climate = Dht22::new(peripherals.pins.gpio4)?;
     let mut tank = TankFloat::new(peripherals.pins.gpio32, TANK_AVAILABLE_WHEN_LOW)?;
