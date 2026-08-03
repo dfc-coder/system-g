@@ -53,3 +53,13 @@ jobs:
       - name: Compile release firmware
         working-directory: crates/growntrol-firmware
         run: cargo build --release
+
+      - name: Reject legacy I2C and ADC drivers
+        working-directory: crates/growntrol-firmware
+        run: |
+          ELF="target/xtensa-esp32-espidf/release/growntrol-firmware"
+          LEGACY_SYMBOLS='(i2c_driver_install|i2c_param_config|adc1_config_width|adc1_config_channel_atten|adc1_get_raw|adc2_config_channel_atten|adc2_get_raw)$'
+          if xtensa-esp32-elf-nm --defined-only "$ELF" | grep -E "$LEGACY_SYMBOLS"; then
+            echo "Legacy ESP-IDF I2C/ADC driver symbols found in firmware ELF"
+            exit 1
+          fi
