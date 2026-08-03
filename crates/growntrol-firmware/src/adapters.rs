@@ -8,9 +8,7 @@ use std::time::Duration;
 use anyhow::{anyhow, Context, Result};
 use esp_idf_hal::adc::{Adc, AdcChannel};
 use esp_idf_hal::delay::{Ets, FreeRtos};
-use esp_idf_hal::gpio::{
-    ADCPin, Input, InputOutput, InputPin, Output, OutputPin, PinDriver, Pull,
-};
+use esp_idf_hal::gpio::{ADCPin, Input, InputOutput, InputPin, Output, OutputPin, PinDriver, Pull};
 use esp_idf_hal::i2c::I2c;
 use esp_idf_hal::sys::{self, EspError};
 use esp_idf_svc::timer::{EspTaskTimerService, EspTimer};
