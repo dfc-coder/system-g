@@ -1,10 +1,12 @@
 use anyhow::{anyhow, Context, Result};
 use embedded_hal::i2c::I2c;
-use esp_idf_hal::adc::{ADCPin, AdcChannelDriver, AdcDriver, AdcUnit};
+use esp_idf_hal::adc::{AdcChannel, AdcChannelDriver, AdcDriver, AdcUnit};
 use esp_idf_hal::delay::{Ets, FreeRtos};
-use esp_idf_hal::gpio::{Input, InputOutput, InputPin, Output, OutputPin, PinDriver, Pull};
+use esp_idf_hal::gpio::{
+    Input, InputOutput, InputPin, Output, OutputPin, Pin, PinDriver, Pull,
+};
 use esp_idf_hal::i2c::I2cDriver;
-use esp_idf_hal::sys::adc_atten_t;
+use esp_idf_hal::sys::{adc_atten_t, gpio_set_level, ESP_OK};
 use growntrol_core::{median_sample, ClimateReading, SoilCalibration, TankState};
 
 use crate::ports::{Actuator, ClimateSensor, RtcDateTime, SoilSensor, TankSensor, WallClock};
@@ -17,6 +19,14 @@ pub struct ActiveOutput<'d> {
 
 impl<'d> ActiveOutput<'d> {
     pub fn new<T: OutputPin + 'd>(pin: T, active_low: bool) -> Result<Self> {
+        let pin_number = pin.pin();
+        let inactive_level = if active_low { 1 } else { 0 };
+        let result = unsafe { gpio_set_level(pin_number.into(), inactive_level) };
+        anyhow::ensure!(
+            result == ESP_OK,
+            "failed to preload inactive level for GPIO {pin_number}: {result}"
+        );
+
         let mut pin = PinDriver::output(pin).context("configure output GPIO")?;
         if active_low {
             pin.set_high().context("set safe inactive output")?;
@@ -114,24 +124,25 @@ impl TankSensor for TankFloat<'_> {
     }
 }
 
-pub struct SoilAdc<'d, ADC, PIN, const ATTENUATION: adc_atten_t>
+pub struct SoilAdc<'d, ADC, CHANNEL, const ATTENUATION: adc_atten_t>
 where
     ADC: AdcUnit,
-    PIN: ADCPin<Adc = ADC>,
+    CHANNEL: AdcChannel<AdcUnit = ADC>,
 {
     adc: AdcDriver<'d, ADC>,
-    channel: AdcChannelDriver<'d, ATTENUATION, PIN>,
+    channel: AdcChannelDriver<'d, ATTENUATION, CHANNEL>,
     calibration: SoilCalibration,
 }
 
-impl<'d, ADC, PIN, const ATTENUATION: adc_atten_t> SoilAdc<'d, ADC, PIN, ATTENUATION>
+impl<'d, ADC, CHANNEL, const ATTENUATION: adc_atten_t>
+    SoilAdc<'d, ADC, CHANNEL, ATTENUATION>
 where
     ADC: AdcUnit,
-    PIN: ADCPin<Adc = ADC>,
+    CHANNEL: AdcChannel<AdcUnit = ADC>,
 {
     pub fn new(
         adc: AdcDriver<'d, ADC>,
-        channel: AdcChannelDriver<'d, ATTENUATION, PIN>,
+        channel: AdcChannelDriver<'d, ATTENUATION, CHANNEL>,
         calibration: SoilCalibration,
     ) -> Result<Self> {
         calibration
@@ -145,15 +156,19 @@ where
     }
 }
 
-impl<ADC, PIN, const ATTENUATION: adc_atten_t> SoilSensor for SoilAdc<'_, ADC, PIN, ATTENUATION>
+impl<ADC, CHANNEL, const ATTENUATION: adc_atten_t> SoilSensor
+    for SoilAdc<'_, ADC, CHANNEL, ATTENUATION>
 where
     ADC: AdcUnit,
-    PIN: ADCPin<Adc = ADC>,
+    CHANNEL: AdcChannel<AdcUnit = ADC>,
 {
     fn read_percent(&mut self) -> Result<u8> {
         let mut samples = [0_u16; 7];
         for sample in &mut samples {
-            *sample = self.adc.read(&mut self.channel).context("read soil ADC")?;
+            *sample = self
+                .adc
+                .read_raw(&mut self.channel)
+                .context("read raw soil ADC")?;
             FreeRtos::delay_ms(25);
         }
 
