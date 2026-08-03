@@ -1,0 +1,44 @@
+name: ESP32 firmware CI
+
+on:
+  pull_request:
+    paths:
+      - "crates/growntrol-firmware/**"
+      - "crates/growntrol-core/**"
+      - ".github/workflows/firmware-ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "crates/growntrol-firmware/**"
+      - "crates/growntrol-core/**"
+      - ".github/workflows/firmware-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firmware-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-esp32:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install Xtensa Rust toolchain
+        uses: esp-rs/xtensa-toolchain@v1.6
+        with:
+          default: true
+          buildtargets: esp32
+          ldproxy: true
+
+      - name: Check firmware formatting
+        working-directory: crates/growntrol-firmware
+        run: cargo fmt -- --check
+
+      - name: Compile release firmware
+        working-directory: crates/growntrol-firmware
+        run: cargo build --release
