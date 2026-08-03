@@ -19,7 +19,7 @@ Control and monitoring system for an indoor grow, designed around one classic ES
 - Rust backend that aggregates MQTT state and exposes HTTP JSON and Server-Sent Events.
 - Vue 3 dashboard for live state, bounded overrides, and safe irrigation requests.
 - Optional MQTT device simulator for end-to-end testing without physical sensors.
-- Local Mosquitto, backend, dashboard, and demo-device stack through Docker Compose.
+- Local Mosquitto, backend, dashboard, and demo-device stack through Podman Compose.
 - Separate host, firmware, platform, and dashboard CI checks.
 
 ESP32 Wi-Fi provisioning and its MQTT transport adapter remain a separate hardware-validated phase. The backend and dashboard never drive GPIO directly.
@@ -58,19 +58,27 @@ npm run build
 
 Node.js 20.19 or newer is required by the selected Vite version.
 
-## Run the local platform
+## Run the local platform with Podman
+
+Verify that a Compose provider is available:
+
+```bash
+podman compose version
+```
 
 Start the broker, backend, and dashboard:
 
 ```bash
-docker compose up --build
+podman compose up --build
 ```
 
 Start the same platform with a simulated Growntrol device:
 
 ```bash
-docker compose --profile demo up --build
+podman compose --profile demo up --build
 ```
+
+If the `podman compose` wrapper is unavailable but `podman-compose` is installed, use the same commands replacing `podman compose` with `podman-compose`.
 
 The simulator publishes retained availability and telemetry, receives dashboard commands, and publishes acknowledgements. It does not represent physical safety validation or replace the ESP32 control engine.
 
@@ -79,6 +87,12 @@ Services:
 - MQTT broker: `localhost:1883`
 - Backend API and SSE: `http://localhost:8080`
 - Dashboard: `http://localhost:5173`
+
+Stop the complete demo stack with:
+
+```bash
+podman compose --profile demo down
+```
 
 The included Mosquitto configuration permits anonymous access only for local development. A network-exposed deployment must use authentication, authorization, and TLS.
 
