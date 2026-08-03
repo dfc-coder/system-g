@@ -1,14 +1,18 @@
+use core::marker::PhantomData;
+use core::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
-use esp_idf_hal::adc::{AdcChannel, AdcChannelDriver, AdcDriver, AdcUnit};
-use esp_idf_hal::delay::{Ets, FreeRtos, TickType};
-use esp_idf_hal::gpio::{Input, InputOutput, InputPin, Output, OutputPin, PinDriver, Pull};
-use esp_idf_hal::i2c::I2cDriver;
-use esp_idf_hal::sys::{adc_atten_t, gpio_set_level, ESP_OK};
+use esp_idf_hal::adc::{Adc, AdcChannel};
+use esp_idf_hal::delay::{Ets, FreeRtos};
+use esp_idf_hal::gpio::{
+    ADCPin, Input, InputOutput, InputPin, Output, OutputPin, Pin, PinDriver, Pull,
+};
+use esp_idf_hal::i2c::I2c;
+use esp_idf_hal::sys::{self, EspError};
 use esp_idf_svc::timer::{EspTaskTimerService, EspTimer};
 use growntrol_core::{median_sample, ClimateReading, SoilCalibration, TankState};
 use log::error;
@@ -17,6 +21,10 @@ use crate::ports::{
     Actuator, ClimateSensor, HardwareEvent, PumpActuator, RtcDateTime, SoilSensor, TankSensor,
     WallClock,
 };
+
+fn check_esp(code: sys::esp_err_t, context: &'static str) -> Result<()> {
+    EspError::convert(code).context(context)
+}
 
 pub struct ActiveOutput<'d> {
     pin: PinDriver<'d, Output>,
@@ -28,9 +36,9 @@ impl<'d> ActiveOutput<'d> {
     pub fn new<T: OutputPin + 'd>(pin: T, active_low: bool) -> Result<Self> {
         let pin_number = pin.pin();
         let inactive_level = if active_low { 1 } else { 0 };
-        let result = unsafe { gpio_set_level(pin_number as _, inactive_level) };
+        let result = unsafe { sys::gpio_set_level(pin_number as _, inactive_level) };
         anyhow::ensure!(
-            result == ESP_OK,
+            result == sys::ESP_OK,
             "failed to preload inactive level for GPIO {pin_number}: {result}"
         );
 
@@ -109,8 +117,8 @@ impl<'d> PumpOutput<'d> {
                     return;
                 }
 
-                let result = unsafe { gpio_set_level(pin_number as _, inactive_level) };
-                if result == ESP_OK {
+                let result = unsafe { sys::gpio_set_level(pin_number as _, inactive_level) };
+                if result == sys::ESP_OK {
                     state.store(false, Ordering::Release);
                 } else {
                     error!(
@@ -218,50 +226,69 @@ impl TankSensor for TankFloat<'_> {
     }
 }
 
-pub struct SoilAdc<'d, ADC, CHANNEL, const ATTENUATION: adc_atten_t>
-where
-    ADC: AdcUnit,
-    CHANNEL: AdcChannel<AdcUnit = ADC>,
-{
-    adc: AdcDriver<'d, ADC>,
-    channel: AdcChannelDriver<'d, ATTENUATION, CHANNEL>,
+pub struct SoilAdc<'d> {
+    unit: sys::adc_oneshot_unit_handle_t,
+    channel: sys::adc_channel_t,
     calibration: SoilCalibration,
+    _ownership: PhantomData<&'d mut ()>,
 }
 
-impl<'d, ADC, CHANNEL, const ATTENUATION: adc_atten_t> SoilAdc<'d, ADC, CHANNEL, ATTENUATION>
-where
-    ADC: AdcUnit,
-    CHANNEL: AdcChannel<AdcUnit = ADC>,
-{
-    pub fn new(
-        adc: AdcDriver<'d, ADC>,
-        channel: AdcChannelDriver<'d, ATTENUATION, CHANNEL>,
+impl<'d> SoilAdc<'d> {
+    pub fn new<ADC, PIN>(
+        _adc: ADC,
+        _pin: PIN,
+        attenuation: sys::adc_atten_t,
         calibration: SoilCalibration,
-    ) -> Result<Self> {
+    ) -> Result<Self>
+    where
+        ADC: Adc + 'd,
+        PIN: ADCPin + 'd,
+        PIN::AdcChannel: AdcChannel<AdcUnit = ADC::AdcUnit>,
+    {
         calibration
             .validate()
             .map_err(|error| anyhow!("{error:?}"))?;
+
+        let mut unit = ptr::null_mut();
+        let mut unit_config = sys::adc_oneshot_unit_init_cfg_t::default();
+        unit_config.unit_id = ADC::unit();
+        check_esp(
+            unsafe { sys::adc_oneshot_new_unit(&unit_config, &mut unit) },
+            "initialize ADC oneshot unit",
+        )?;
+
+        let channel = <PIN::AdcChannel as AdcChannel>::channel();
+        let channel_config = sys::adc_oneshot_chan_cfg_t {
+            atten: attenuation,
+            bitwidth: sys::adc_bitwidth_t_ADC_BITWIDTH_DEFAULT,
+        };
+        if let Err(error) = check_esp(
+            unsafe { sys::adc_oneshot_config_channel(unit, channel, &channel_config) },
+            "configure soil ADC oneshot channel",
+        ) {
+            let _ = EspError::convert(unsafe { sys::adc_oneshot_del_unit(unit) });
+            return Err(error);
+        }
+
         Ok(Self {
-            adc,
+            unit,
             channel,
             calibration,
+            _ownership: PhantomData,
         })
     }
 }
 
-impl<ADC, CHANNEL, const ATTENUATION: adc_atten_t> SoilSensor
-    for SoilAdc<'_, ADC, CHANNEL, ATTENUATION>
-where
-    ADC: AdcUnit,
-    CHANNEL: AdcChannel<AdcUnit = ADC>,
-{
+impl SoilSensor for SoilAdc<'_> {
     fn read_percent(&mut self) -> Result<u8> {
         let mut samples = [0_u16; 7];
         for sample in &mut samples {
-            *sample = self
-                .adc
-                .read_raw(&mut self.channel)
-                .context("read raw soil ADC")?;
+            let mut raw = 0_i32;
+            check_esp(
+                unsafe { sys::adc_oneshot_read(self.unit, self.channel, &mut raw) },
+                "read raw soil ADC",
+            )?;
+            *sample = u16::try_from(raw).context("soil ADC returned a negative value")?;
             FreeRtos::delay_ms(25);
         }
 
@@ -272,16 +299,78 @@ where
     }
 }
 
+impl Drop for SoilAdc<'_> {
+    fn drop(&mut self) {
+        if let Some(error) = EspError::from(unsafe { sys::adc_oneshot_del_unit(self.unit) }) {
+            error!("failed to release ADC oneshot unit: {error}");
+        }
+    }
+}
+
 pub struct Ds3231<'d> {
-    i2c: I2cDriver<'d>,
+    bus: sys::i2c_master_bus_handle_t,
+    device: sys::i2c_master_dev_handle_t,
+    _ownership: PhantomData<&'d mut ()>,
 }
 
 impl<'d> Ds3231<'d> {
-    const ADDRESS: u8 = 0x68;
-    const I2C_TIMEOUT_TICKS: u32 = TickType::new_millis(100).ticks();
+    const ADDRESS: u16 = 0x68;
+    const I2C_TIMEOUT_MS: i32 = 100;
 
-    pub fn new(i2c: I2cDriver<'d>) -> Self {
-        Self { i2c }
+    pub fn new<I2C, SDA, SCL>(_i2c: I2C, sda: SDA, scl: SCL) -> Result<Self>
+    where
+        I2C: I2c + 'd,
+        SDA: InputPin + OutputPin + 'd,
+        SCL: InputPin + OutputPin + 'd,
+    {
+        let mut bus_config = sys::i2c_master_bus_config_t::default();
+        bus_config.i2c_port = I2C::port();
+        bus_config.sda_io_num = sda.pin() as _;
+        bus_config.scl_io_num = scl.pin() as _;
+        bus_config.glitch_ignore_cnt = 7;
+        bus_config.flags.set_enable_internal_pullup(1);
+
+        let mut bus = ptr::null_mut();
+        check_esp(
+            unsafe { sys::i2c_new_master_bus(&bus_config, &mut bus) },
+            "initialize I2C master bus",
+        )?;
+
+        let mut device_config = sys::i2c_device_config_t::default();
+        device_config.dev_addr_length = sys::i2c_addr_bit_len_t_I2C_ADDR_BIT_LEN_7;
+        device_config.device_address = Self::ADDRESS;
+        device_config.scl_speed_hz = 100_000;
+
+        let mut device = ptr::null_mut();
+        if let Err(error) = check_esp(
+            unsafe { sys::i2c_master_bus_add_device(bus, &device_config, &mut device) },
+            "add DS3231 to I2C bus",
+        ) {
+            let _ = EspError::convert(unsafe { sys::i2c_del_master_bus(bus) });
+            return Err(error);
+        }
+
+        Ok(Self {
+            bus,
+            device,
+            _ownership: PhantomData,
+        })
+    }
+
+    fn write_read(&mut self, register: u8, data: &mut [u8]) -> Result<()> {
+        check_esp(
+            unsafe {
+                sys::i2c_master_transmit_receive(
+                    self.device,
+                    &register,
+                    1,
+                    data.as_mut_ptr(),
+                    data.len(),
+                    Self::I2C_TIMEOUT_MS,
+                )
+            },
+            "I2C transmit-receive",
+        )
     }
 
     fn bcd(value: u8) -> u8 {
@@ -307,14 +396,12 @@ impl<'d> Ds3231<'d> {
 impl WallClock for Ds3231<'_> {
     fn now(&mut self) -> Result<RtcDateTime> {
         let mut status = [0_u8; 1];
-        self.i2c
-            .write_read(Self::ADDRESS, &[0x0f], &mut status, Self::I2C_TIMEOUT_TICKS)
+        self.write_read(0x0f, &mut status)
             .context("read DS3231 status")?;
         anyhow::ensure!(status[0] & 0x80 == 0, "DS3231 oscillator-stop flag is set");
 
         let mut data = [0_u8; 7];
-        self.i2c
-            .write_read(Self::ADDRESS, &[0x00], &mut data, Self::I2C_TIMEOUT_TICKS)
+        self.write_read(0x00, &mut data)
             .context("read DS3231 time")?;
 
         RtcDateTime {
@@ -326,5 +413,16 @@ impl WallClock for Ds3231<'_> {
             second: Self::bcd(data[0] & 0x7f),
         }
         .validate()
+    }
+}
+
+impl Drop for Ds3231<'_> {
+    fn drop(&mut self) {
+        if let Some(error) = EspError::from(unsafe { sys::i2c_master_bus_rm_device(self.device) }) {
+            error!("failed to remove DS3231 from I2C bus: {error}");
+        }
+        if let Some(error) = EspError::from(unsafe { sys::i2c_del_master_bus(self.bus) }) {
+            error!("failed to release I2C master bus: {error}");
+        }
     }
 }
