@@ -7,8 +7,8 @@ This document describes the firmware pin contract. Confirm the exact ESP32 board
 | Device | ESP32 connection | Notes |
 |---|---|---|
 | DHT22 data | GPIO4 | Add the pull-up recommended for the sensor/module being used. |
-| DS3231 SDA | GPIO21 | I2C, 100 kHz. |
-| DS3231 SCL | GPIO22 | I2C, 100 kHz. |
+| DS3231 SDA | GPIO21 | I2C, 100 kHz; bus pull-up must be to 3.3 V. |
+| DS3231 SCL | GPIO22 | I2C, 100 kHz; bus pull-up must be to 3.3 V. |
 | Capacitive soil sensor | GPIO34 | ADC1 input-only pin. Sensor output must not exceed 3.3 V. |
 | Tank float | GPIO32 to GND | Closed means water available; open means low/fault. |
 | Lights relay input | GPIO25 | Active-low by default. |
@@ -16,6 +16,17 @@ This document describes the firmware pin contract. Confirm the exact ESP32 board
 | Pump MOSFET/driver input | GPIO27 | Active-high by default. |
 
 All low-voltage modules must share the ESP32 signal ground unless galvanic isolation explicitly prevents it.
+
+## DS3231 and I2C voltage
+
+The ESP32 GPIO is not 5 V tolerant. SDA and SCL must never be pulled up to 5 V.
+
+Some DS3231 breakout boards are powered from 5 V and include onboard pull-up resistors connected to that same 5 V rail. Before connecting one:
+
+1. Identify where the module's SDA and SCL pull-up resistors are connected.
+2. Power the module from 3.3 V when the board supports it, or remove/disable its 5 V pull-ups.
+3. Otherwise use a bidirectional I2C level shifter.
+4. Verify SDA and SCL idle voltage with a multimeter before connecting them to the ESP32.
 
 ## Pump
 
