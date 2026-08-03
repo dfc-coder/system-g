@@ -9,7 +9,6 @@ use anyhow::{anyhow, Context, Result};
 use esp_idf_hal::adc::{Adc, AdcChannel};
 use esp_idf_hal::delay::{Ets, FreeRtos};
 use esp_idf_hal::gpio::{ADCPin, Input, InputOutput, InputPin, Output, OutputPin, PinDriver, Pull};
-use esp_idf_hal::i2c::I2c;
 use esp_idf_hal::sys::{self, EspError};
 use esp_idf_svc::timer::{EspTaskTimerService, EspTimer};
 use growntrol_core::{median_sample, ClimateReading, SoilCalibration, TankState};
@@ -317,12 +316,12 @@ impl<'d> Ds3231<'d> {
 
     pub fn new<I2C, SDA, SCL>(_i2c: I2C, sda: SDA, scl: SCL) -> Result<Self>
     where
-        I2C: I2c + 'd,
+        I2C: 'd,
         SDA: InputPin + OutputPin + 'd,
         SCL: InputPin + OutputPin + 'd,
     {
         let mut bus_config = sys::i2c_master_bus_config_t::default();
-        bus_config.i2c_port = I2C::port() as _;
+        bus_config.i2c_port = 0;
         bus_config.sda_io_num = sda.pin() as _;
         bus_config.scl_io_num = scl.pin() as _;
         bus_config.glitch_ignore_cnt = 7;
