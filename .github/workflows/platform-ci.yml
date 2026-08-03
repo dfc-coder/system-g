@@ -7,6 +7,7 @@ on:
       - "Cargo.lock"
       - "crates/growntrol-protocol/**"
       - "crates/growntrol-backend/**"
+      - "crates/growntrol-simulator/**"
       - "apps/growntrol-dashboard/**"
       - "deploy/**"
       - "compose.yaml"
@@ -20,6 +21,7 @@ on:
       - "Cargo.lock"
       - "crates/growntrol-protocol/**"
       - "crates/growntrol-backend/**"
+      - "crates/growntrol-simulator/**"
       - "apps/growntrol-dashboard/**"
       - "deploy/**"
       - "compose.yaml"
@@ -49,11 +51,11 @@ jobs:
       - name: Check Rust formatting
         run: cargo fmt --all -- --check
 
-      - name: Compile protocol and backend
-        run: cargo check -p growntrol-protocol -p growntrol-backend --all-targets
+      - name: Compile platform crates
+        run: cargo check -p growntrol-protocol -p growntrol-backend -p growntrol-simulator --all-targets
 
-      - name: Test protocol and backend
-        run: cargo test -p growntrol-protocol -p growntrol-backend --all-targets
+      - name: Test platform crates
+        run: cargo test -p growntrol-protocol -p growntrol-backend -p growntrol-simulator --all-targets
 
   dashboard:
     runs-on: ubuntu-latest
