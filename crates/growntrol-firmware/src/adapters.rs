@@ -6,9 +6,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
-use esp_idf_hal::adc::{Adc, AdcChannel};
 use esp_idf_hal::delay::{Ets, FreeRtos};
-use esp_idf_hal::gpio::{ADCPin, Input, InputOutput, InputPin, Output, OutputPin, PinDriver, Pull};
+use esp_idf_hal::gpio::{Input, InputOutput, InputPin, Output, OutputPin, PinDriver, Pull};
 use esp_idf_hal::sys::{self, EspError};
 use esp_idf_svc::timer::{EspTaskTimerService, EspTimer};
 use growntrol_core::{median_sample, ClimateReading, SoilCalibration, TankState};
@@ -227,20 +226,20 @@ pub struct SoilAdc<'d> {
     unit: sys::adc_oneshot_unit_handle_t,
     channel: sys::adc_channel_t,
     calibration: SoilCalibration,
-    _ownership: PhantomData<&'d mut ()>,
+    _pin: PhantomData<&'d mut ()>,
 }
 
 impl<'d> SoilAdc<'d> {
-    pub fn new<ADC, PIN>(
-        _adc: ADC,
+    const UNIT: sys::adc_unit_t = sys::adc_unit_t_ADC_UNIT_1;
+    const CHANNEL: sys::adc_channel_t = sys::adc_channel_t_ADC_CHANNEL_6;
+
+    pub fn new<PIN>(
         _pin: PIN,
         attenuation: sys::adc_atten_t,
         calibration: SoilCalibration,
     ) -> Result<Self>
     where
-        ADC: Adc + 'd,
-        PIN: ADCPin + 'd,
-        PIN::AdcChannel: AdcChannel<AdcUnit = ADC::AdcUnit>,
+        PIN: InputPin + 'd,
     {
         calibration
             .validate()
@@ -248,19 +247,18 @@ impl<'d> SoilAdc<'d> {
 
         let mut unit = ptr::null_mut();
         let mut unit_config = sys::adc_oneshot_unit_init_cfg_t::default();
-        unit_config.unit_id = ADC::unit();
+        unit_config.unit_id = Self::UNIT;
         check_esp(
             unsafe { sys::adc_oneshot_new_unit(&unit_config, &mut unit) },
             "initialize ADC oneshot unit",
         )?;
 
-        let channel = <PIN::AdcChannel as AdcChannel>::channel();
         let channel_config = sys::adc_oneshot_chan_cfg_t {
             atten: attenuation,
             bitwidth: sys::adc_bitwidth_t_ADC_BITWIDTH_DEFAULT,
         };
         if let Err(error) = check_esp(
-            unsafe { sys::adc_oneshot_config_channel(unit, channel, &channel_config) },
+            unsafe { sys::adc_oneshot_config_channel(unit, Self::CHANNEL, &channel_config) },
             "configure soil ADC oneshot channel",
         ) {
             let _ = EspError::convert(unsafe { sys::adc_oneshot_del_unit(unit) });
@@ -269,9 +267,9 @@ impl<'d> SoilAdc<'d> {
 
         Ok(Self {
             unit,
-            channel,
+            channel: Self::CHANNEL,
             calibration,
-            _ownership: PhantomData,
+            _pin: PhantomData,
         })
     }
 }
@@ -307,16 +305,15 @@ impl Drop for SoilAdc<'_> {
 pub struct Ds3231<'d> {
     bus: sys::i2c_master_bus_handle_t,
     device: sys::i2c_master_dev_handle_t,
-    _ownership: PhantomData<&'d mut ()>,
+    _pins: PhantomData<&'d mut ()>,
 }
 
 impl<'d> Ds3231<'d> {
     const ADDRESS: u16 = 0x68;
     const I2C_TIMEOUT_MS: i32 = 100;
 
-    pub fn new<I2C, SDA, SCL>(_i2c: I2C, sda: SDA, scl: SCL) -> Result<Self>
+    pub fn new<SDA, SCL>(sda: SDA, scl: SCL) -> Result<Self>
     where
-        I2C: 'd,
         SDA: InputPin + OutputPin + 'd,
         SCL: InputPin + OutputPin + 'd,
     {
@@ -350,7 +347,7 @@ impl<'d> Ds3231<'d> {
         Ok(Self {
             bus,
             device,
-            _ownership: PhantomData,
+            _pins: PhantomData,
         })
     }
 
