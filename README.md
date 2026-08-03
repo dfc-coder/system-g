@@ -18,7 +18,8 @@ Control and monitoring system for an indoor grow, designed around one classic ES
 - Versioned MQTT topics and JSON payloads shared by devices and services.
 - Rust backend that aggregates MQTT state and exposes HTTP JSON and Server-Sent Events.
 - Vue 3 dashboard for live state, bounded overrides, and safe irrigation requests.
-- Local Mosquitto, backend, and dashboard stack through Docker Compose.
+- Optional MQTT device simulator for end-to-end testing without physical sensors.
+- Local Mosquitto, backend, dashboard, and demo-device stack through Docker Compose.
 - Separate host, firmware, platform, and dashboard CI checks.
 
 ESP32 Wi-Fi provisioning and its MQTT transport adapter remain a separate hardware-validated phase. The backend and dashboard never drive GPIO directly.
@@ -31,6 +32,7 @@ crates/growntrol-backend/     MQTT-to-HTTP/SSE Rust backend
 crates/growntrol-core/        Host-testable domain rules
 crates/growntrol-firmware/    ESP-IDF firmware for classic ESP32
 crates/growntrol-protocol/    Shared MQTT topics and payload contracts
+crates/growntrol-simulator/   End-to-end MQTT demonstration device
 deploy/                       Local broker configuration
 specs/                        SDD specifications
 docs/                         Wiring and hardware integration procedures
@@ -39,7 +41,11 @@ docs/                         Wiring and hardware integration procedures
 ## Test the Rust code
 
 ```bash
-cargo test -p growntrol-core -p growntrol-protocol -p growntrol-backend
+cargo test \
+  -p growntrol-core \
+  -p growntrol-protocol \
+  -p growntrol-backend \
+  -p growntrol-simulator
 ```
 
 ## Build the dashboard
@@ -54,9 +60,19 @@ Node.js 20.19 or newer is required by the selected Vite version.
 
 ## Run the local platform
 
+Start the broker, backend, and dashboard:
+
 ```bash
 docker compose up --build
 ```
+
+Start the same platform with a simulated Growntrol device:
+
+```bash
+docker compose --profile demo up --build
+```
+
+The simulator publishes retained availability and telemetry, receives dashboard commands, and publishes acknowledgements. It does not represent physical safety validation or replace the ESP32 control engine.
 
 Services:
 
