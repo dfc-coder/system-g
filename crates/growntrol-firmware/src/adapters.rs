@@ -319,6 +319,7 @@ impl<'d> Ds3231<'d> {
     {
         let mut bus_config = sys::i2c_master_bus_config_t::default();
         bus_config.i2c_port = 0;
+        bus_config.__bindgen_anon_1.clk_source = sys::soc_periph_i2c_clk_src_t_I2C_CLK_SRC_DEFAULT;
         bus_config.sda_io_num = sda.pin() as _;
         bus_config.scl_io_num = scl.pin() as _;
         bus_config.glitch_ignore_cnt = 7;
