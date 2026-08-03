@@ -4,10 +4,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
-use embedded_hal::i2c::I2c;
 use esp_idf_hal::adc::{AdcChannel, AdcChannelDriver, AdcDriver, AdcUnit};
-use esp_idf_hal::delay::{Ets, FreeRtos};
-use esp_idf_hal::gpio::{Input, InputOutput, InputPin, Output, OutputPin, Pin, PinDriver, Pull};
+use esp_idf_hal::delay::{Ets, FreeRtos, TickType};
+use esp_idf_hal::gpio::{Input, InputOutput, InputPin, Output, OutputPin, PinDriver, Pull};
 use esp_idf_hal::i2c::I2cDriver;
 use esp_idf_hal::sys::{adc_atten_t, gpio_set_level, ESP_OK};
 use esp_idf_svc::timer::{EspTaskTimerService, EspTimer};
@@ -279,6 +278,7 @@ pub struct Ds3231<'d> {
 
 impl<'d> Ds3231<'d> {
     const ADDRESS: u8 = 0x68;
+    const I2C_TIMEOUT_TICKS: u32 = TickType::new_millis(100).ticks();
 
     pub fn new(i2c: I2cDriver<'d>) -> Self {
         Self { i2c }
@@ -308,13 +308,23 @@ impl WallClock for Ds3231<'_> {
     fn now(&mut self) -> Result<RtcDateTime> {
         let mut status = [0_u8; 1];
         self.i2c
-            .write_read(Self::ADDRESS, &[0x0f], &mut status)
+            .write_read(
+                Self::ADDRESS,
+                &[0x0f],
+                &mut status,
+                Self::I2C_TIMEOUT_TICKS,
+            )
             .context("read DS3231 status")?;
         anyhow::ensure!(status[0] & 0x80 == 0, "DS3231 oscillator-stop flag is set");
 
         let mut data = [0_u8; 7];
         self.i2c
-            .write_read(Self::ADDRESS, &[0x00], &mut data)
+            .write_read(
+                Self::ADDRESS,
+                &[0x00],
+                &mut data,
+                Self::I2C_TIMEOUT_TICKS,
+            )
             .context("read DS3231 time")?;
 
         RtcDateTime {
