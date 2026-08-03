@@ -3,6 +3,7 @@ members = [
     "crates/growntrol-core",
     "crates/growntrol-protocol",
     "crates/growntrol-backend",
+    "crates/growntrol-simulator",
 ]
 exclude = ["crates/growntrol-firmware"]
 resolver = "2"
