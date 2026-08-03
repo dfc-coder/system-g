@@ -5,7 +5,6 @@ mod runtime;
 use std::sync::mpsc;
 
 use anyhow::Result;
-use esp_idf_hal::adc::attenuation;
 use esp_idf_hal::gpio::Pins;
 use esp_idf_svc::log::EspLogger;
 use growntrol_core::{SoilCalibration, SystemConfig};
@@ -41,7 +40,7 @@ fn main() -> Result<()> {
 
     let mut soil = SoilAdc::new(
         pins.gpio34,
-        attenuation::DB_12,
+        esp_idf_svc::sys::adc_atten_t_ADC_ATTEN_DB_12,
         SoilCalibration {
             dry_raw: SOIL_DRY_RAW,
             wet_raw: SOIL_WET_RAW,
