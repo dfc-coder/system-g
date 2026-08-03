@@ -7,11 +7,7 @@ pub struct FanDecision {
     pub next_sample_minutes: u16,
 }
 
-pub fn evaluate_fan(
-    current: FanState,
-    reading: ClimateReading,
-    config: FanConfig,
-) -> FanDecision {
+pub fn evaluate_fan(current: FanState, reading: ClimateReading, config: FanConfig) -> FanDecision {
     let desired_state = match current {
         FanState::Off
             if reading.temperature_c >= config.temperature_on_c
