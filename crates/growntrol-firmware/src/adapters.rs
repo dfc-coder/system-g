@@ -308,23 +308,13 @@ impl WallClock for Ds3231<'_> {
     fn now(&mut self) -> Result<RtcDateTime> {
         let mut status = [0_u8; 1];
         self.i2c
-            .write_read(
-                Self::ADDRESS,
-                &[0x0f],
-                &mut status,
-                Self::I2C_TIMEOUT_TICKS,
-            )
+            .write_read(Self::ADDRESS, &[0x0f], &mut status, Self::I2C_TIMEOUT_TICKS)
             .context("read DS3231 status")?;
         anyhow::ensure!(status[0] & 0x80 == 0, "DS3231 oscillator-stop flag is set");
 
         let mut data = [0_u8; 7];
         self.i2c
-            .write_read(
-                Self::ADDRESS,
-                &[0x00],
-                &mut data,
-                Self::I2C_TIMEOUT_TICKS,
-            )
+            .write_read(Self::ADDRESS, &[0x00], &mut data, Self::I2C_TIMEOUT_TICKS)
             .context("read DS3231 time")?;
 
         RtcDateTime {
