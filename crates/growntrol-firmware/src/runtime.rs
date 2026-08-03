@@ -136,9 +136,7 @@ impl<'a> Runtime<'a> {
             Err(clock_error) => {
                 warn!("RTC unavailable; forcing lights and irrigation off: {clock_error:#}");
                 self.lights.set(false)?;
-                self.handle_irrigation(IrrigationEvent::Abort(
-                    IrrigationBlockReason::ClockFault,
-                ))?;
+                self.handle_irrigation(IrrigationEvent::Abort(IrrigationBlockReason::ClockFault))?;
                 self.scheduler.schedule_after(
                     monotonic_seconds(),
                     60,
@@ -234,9 +232,8 @@ impl<'a> Runtime<'a> {
                         if on && self.lights.is_on() {
                             warn!("pump-on action rejected because lights are on");
                             self.pump.disarm_safety_timeout()?;
-                            pending.push_back(IrrigationEvent::Abort(
-                                IrrigationBlockReason::LightsOn,
-                            ));
+                            pending
+                                .push_back(IrrigationEvent::Abort(IrrigationBlockReason::LightsOn));
                             break;
                         }
                         if self.pump.set(on)? {
