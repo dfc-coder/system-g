@@ -3,15 +3,25 @@ name: ESP32 firmware CI
 on:
   pull_request:
     paths:
+      - "Cargo.toml"
+      - "README.md"
       - "crates/growntrol-firmware/**"
       - "crates/growntrol-core/**"
+      - "specs/004-esp32-runtime.md"
+      - "docs/hardware-wiring.md"
+      - "docs/hardware-integration-checklist.md"
       - ".github/workflows/firmware-ci.yml"
   push:
     branches:
       - main
     paths:
+      - "Cargo.toml"
+      - "README.md"
       - "crates/growntrol-firmware/**"
       - "crates/growntrol-core/**"
+      - "specs/004-esp32-runtime.md"
+      - "docs/hardware-wiring.md"
+      - "docs/hardware-integration-checklist.md"
       - ".github/workflows/firmware-ci.yml"
 
 permissions:
@@ -24,6 +34,7 @@ concurrency:
 jobs:
   build-esp32:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
