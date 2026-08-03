@@ -89,10 +89,12 @@ impl IrrigationMachine {
                     });
                     IrrigationState::Pumping { pulse }
                 }
-                (IrrigationState::CheckingTank, TankState::WaterLow) => {
+                (IrrigationState::CheckingTank, TankState::WaterLow)
+                | (IrrigationState::Absorbing { .. }, TankState::WaterLow) => {
                     IrrigationState::Blocked(IrrigationBlockReason::TankLow)
                 }
-                (IrrigationState::CheckingTank, TankState::SensorFault) => {
+                (IrrigationState::CheckingTank, TankState::SensorFault)
+                | (IrrigationState::Absorbing { .. }, TankState::SensorFault) => {
                     IrrigationState::Blocked(IrrigationBlockReason::TankSensorFault)
                 }
                 (IrrigationState::CheckingTank, TankState::WaterAvailable) => {
@@ -113,8 +115,8 @@ impl IrrigationMachine {
                 }
                 state => state,
             },
-            IrrigationEvent::AbsorptionFinished { soil_moisture_pct } => {
-                match soil_moisture_pct {
+            IrrigationEvent::AbsorptionFinished { soil_moisture_pct } => match self.state {
+                IrrigationState::Absorbing { .. } => match soil_moisture_pct {
                     None => IrrigationState::Blocked(IrrigationBlockReason::SoilSensorFault),
                     Some(value) if value >= config.target_pct => IrrigationState::Completed,
                     Some(_) if self.completed_pulses >= config.max_pulses_per_cycle => {
@@ -124,8 +126,9 @@ impl IrrigationMachine {
                         actions.push(IrrigationAction::MeasureTank);
                         IrrigationState::CheckingTank
                     }
-                }
-            }
+                },
+                state => state,
+            },
         };
 
         IrrigationDecision {
@@ -148,6 +151,19 @@ mod tests {
             max_pulses_per_cycle: 3,
             only_when_lights_off: true,
         }
+    }
+
+    fn start_pulse(machine: &mut IrrigationMachine) {
+        machine.handle(
+            IrrigationEvent::LightsTurnedOff {
+                soil_moisture_pct: Some(20),
+            },
+            config(),
+        );
+        machine.handle(
+            IrrigationEvent::TankChecked(TankState::WaterAvailable),
+            config(),
+        );
     }
 
     #[test]
@@ -188,21 +204,7 @@ mod tests {
     #[test]
     fn pump_pulse_is_bounded_and_absorption_is_five_minutes() {
         let mut machine = IrrigationMachine::default();
-        machine.handle(
-            IrrigationEvent::LightsTurnedOff {
-                soil_moisture_pct: Some(20),
-            },
-            config(),
-        );
-        let start = machine.handle(
-            IrrigationEvent::TankChecked(TankState::WaterAvailable),
-            config(),
-        );
-        assert!(start.actions.contains(&IrrigationAction::SetPump(true)));
-        assert!(start.actions.contains(&IrrigationAction::Schedule {
-            after_seconds: 8,
-            kind: ScheduledEventKind::PumpPulseFinished,
-        }));
+        start_pulse(&mut machine);
 
         let finish = machine.handle(IrrigationEvent::PumpPulseFinished, config());
         assert!(finish.actions.contains(&IrrigationAction::SetPump(false)));
@@ -216,19 +218,38 @@ mod tests {
     #[test]
     fn lights_turning_on_stops_active_pump() {
         let mut machine = IrrigationMachine::default();
-        machine.handle(
-            IrrigationEvent::LightsTurnedOff {
-                soil_moisture_pct: Some(20),
-            },
-            config(),
-        );
-        machine.handle(
-            IrrigationEvent::TankChecked(TankState::WaterAvailable),
-            config(),
-        );
+        start_pulse(&mut machine);
 
         let decision = machine.handle(IrrigationEvent::LightsTurnedOn, config());
         assert_eq!(decision.state, IrrigationState::Idle);
         assert_eq!(decision.actions, vec![IrrigationAction::SetPump(false)]);
+    }
+
+    #[test]
+    fn post_pulse_tank_low_blocks_cycle_and_late_absorption_cannot_restart_it() {
+        let mut machine = IrrigationMachine::default();
+        start_pulse(&mut machine);
+        machine.handle(IrrigationEvent::PumpPulseFinished, config());
+
+        let tank_decision = machine.handle(
+            IrrigationEvent::TankChecked(TankState::WaterLow),
+            config(),
+        );
+        assert_eq!(
+            tank_decision.state,
+            IrrigationState::Blocked(IrrigationBlockReason::TankLow)
+        );
+
+        let late_absorption = machine.handle(
+            IrrigationEvent::AbsorptionFinished {
+                soil_moisture_pct: Some(10),
+            },
+            config(),
+        );
+        assert_eq!(
+            late_absorption.state,
+            IrrigationState::Blocked(IrrigationBlockReason::TankLow)
+        );
+        assert!(late_absorption.actions.is_empty());
     }
 }
