@@ -16,7 +16,9 @@ pub enum IrrigationEvent {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IrrigationAction {
     SetPump(bool),
-    ArmPumpSafety { after_seconds: u32 },
+    ArmPumpSafety {
+        after_seconds: u32,
+    },
     DisarmPumpSafety,
     MeasureTank,
     Schedule {
@@ -281,9 +283,7 @@ mod tests {
 
         let finish = machine.handle(IrrigationEvent::PumpPulseFinished, config());
         assert!(finish.actions.contains(&IrrigationAction::SetPump(false)));
-        assert!(finish
-            .actions
-            .contains(&IrrigationAction::DisarmPumpSafety));
+        assert!(finish.actions.contains(&IrrigationAction::DisarmPumpSafety));
         assert!(finish.actions.contains(&IrrigationAction::MeasureTank));
         assert!(finish.actions.contains(&IrrigationAction::Schedule {
             after_seconds: 300,
@@ -316,12 +316,16 @@ mod tests {
         let decision = machine.handle(IrrigationEvent::LightsTurnedOn, config());
         assert_eq!(decision.state, IrrigationState::Idle);
         assert!(decision.actions.contains(&IrrigationAction::SetPump(false)));
-        assert!(decision.actions.contains(&IrrigationAction::CancelScheduled(
-            ScheduledEventKind::PumpPulseFinished
-        )));
-        assert!(decision.actions.contains(&IrrigationAction::CancelScheduled(
-            ScheduledEventKind::AbsorptionFinished
-        )));
+        assert!(decision
+            .actions
+            .contains(&IrrigationAction::CancelScheduled(
+                ScheduledEventKind::PumpPulseFinished
+            )));
+        assert!(decision
+            .actions
+            .contains(&IrrigationAction::CancelScheduled(
+                ScheduledEventKind::AbsorptionFinished
+            )));
     }
 
     #[test]
