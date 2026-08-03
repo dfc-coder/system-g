@@ -1,0 +1,22 @@
+[package]
+name = "growntrol-firmware"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+publish = false
+
+[dependencies]
+anyhow = "1"
+dht-sensor = "0.3"
+embedded-hal = "1"
+esp-idf-hal = { version = "0.46", features = ["adc-oneshot-legacy"] }
+esp-idf-svc = "0.52.1"
+growntrol-core = { path = "../growntrol-core" }
+log = "0.4"
+
+[build-dependencies]
+embuild = "0.33"
+
+[package.metadata.esp-idf-sys]
+esp_idf_version = "v5.4.3"
