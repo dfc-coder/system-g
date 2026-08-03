@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::time::Duration;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use growntrol_core::{
     evaluate_fan, evaluate_lighting, seconds_until_minute, DeadlineScheduler, FanState,
     IrrigationAction, IrrigationBlockReason, IrrigationEvent, IrrigationMachine,
@@ -41,7 +41,9 @@ impl<'a> Runtime<'a> {
         tank: &'a mut dyn TankSensor,
         clock: &'a mut dyn WallClock,
     ) -> Result<Self> {
-        config.validate().context("invalid system configuration")?;
+        config
+            .validate()
+            .map_err(|error| anyhow!("invalid system configuration: {error:?}"))?;
         Ok(Self {
             config,
             scheduler: DeadlineScheduler::default(),
