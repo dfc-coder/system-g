@@ -1,14 +1,7 @@
 pub const SECONDS_PER_DAY: u32 = 24 * 60 * 60;
 
-pub fn seconds_until_minute(
-    hour: u8,
-    minute: u8,
-    second: u8,
-    target_minute_of_day: u16,
-) -> u32 {
-    let now = u32::from(hour % 24) * 3600
-        + u32::from(minute % 60) * 60
-        + u32::from(second % 60);
+pub fn seconds_until_minute(hour: u8, minute: u8, second: u8, target_minute_of_day: u16) -> u32 {
+    let now = u32::from(hour % 24) * 3600 + u32::from(minute % 60) * 60 + u32::from(second % 60);
     let target = u32::from(target_minute_of_day % 1440) * 60;
     let delta = (target + SECONDS_PER_DAY - now) % SECONDS_PER_DAY;
 
