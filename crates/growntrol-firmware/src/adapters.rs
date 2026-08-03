@@ -1,3 +1,8 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::Sender;
+use std::sync::Arc;
+use std::time::Duration;
+
 use anyhow::{anyhow, Context, Result};
 use embedded_hal::i2c::I2c;
 use esp_idf_hal::adc::{AdcChannel, AdcChannelDriver, AdcDriver, AdcUnit};
@@ -7,21 +12,26 @@ use esp_idf_hal::gpio::{
 };
 use esp_idf_hal::i2c::I2cDriver;
 use esp_idf_hal::sys::{adc_atten_t, gpio_set_level, ESP_OK};
+use esp_idf_svc::timer::{EspTaskTimerService, EspTimer};
 use growntrol_core::{median_sample, ClimateReading, SoilCalibration, TankState};
+use log::error;
 
-use crate::ports::{Actuator, ClimateSensor, RtcDateTime, SoilSensor, TankSensor, WallClock};
+use crate::ports::{
+    Actuator, ClimateSensor, HardwareEvent, PumpActuator, RtcDateTime, SoilSensor, TankSensor,
+    WallClock,
+};
 
 pub struct ActiveOutput<'d> {
     pin: PinDriver<'d, Output>,
     active_low: bool,
-    on: bool,
+    on: Arc<AtomicBool>,
 }
 
 impl<'d> ActiveOutput<'d> {
     pub fn new<T: OutputPin + 'd>(pin: T, active_low: bool) -> Result<Self> {
         let pin_number = pin.pin();
         let inactive_level = if active_low { 1 } else { 0 };
-        let result = unsafe { gpio_set_level(pin_number.into(), inactive_level) };
+        let result = unsafe { gpio_set_level(pin_number as _, inactive_level) };
         anyhow::ensure!(
             result == ESP_OK,
             "failed to preload inactive level for GPIO {pin_number}: {result}"
@@ -37,14 +47,26 @@ impl<'d> ActiveOutput<'d> {
         Ok(Self {
             pin,
             active_low,
-            on: false,
+            on: Arc::new(AtomicBool::new(false)),
         })
+    }
+
+    fn raw_pin(&self) -> u8 {
+        self.pin.pin()
+    }
+
+    fn inactive_level(&self) -> u32 {
+        if self.active_low { 1 } else { 0 }
+    }
+
+    fn state_handle(&self) -> Arc<AtomicBool> {
+        self.on.clone()
     }
 }
 
 impl Actuator for ActiveOutput<'_> {
     fn set(&mut self, on: bool) -> Result<bool> {
-        if self.on == on {
+        if self.on.load(Ordering::Acquire) == on {
             return Ok(false);
         }
 
@@ -54,12 +76,83 @@ impl Actuator for ActiveOutput<'_> {
         } else {
             self.pin.set_low().context("drive output low")?;
         }
-        self.on = on;
+        self.on.store(on, Ordering::Release);
         Ok(true)
     }
 
     fn is_on(&self) -> bool {
-        self.on
+        self.on.load(Ordering::Acquire)
+    }
+}
+
+pub struct PumpOutput<'d> {
+    output: ActiveOutput<'d>,
+    safety_timer: EspTimer<'static>,
+}
+
+impl<'d> PumpOutput<'d> {
+    pub fn new<T: OutputPin + 'd>(
+        pin: T,
+        active_low: bool,
+        event_sender: Sender<HardwareEvent>,
+    ) -> Result<Self> {
+        let output = ActiveOutput::new(pin, active_low)?;
+        let pin_number = output.raw_pin();
+        let inactive_level = output.inactive_level();
+        let state = output.state_handle();
+
+        let timer_service = EspTaskTimerService::new().context("create ESP timer service")?;
+        let safety_timer = timer_service
+            .timer(move || {
+                if !state.load(Ordering::Acquire) {
+                    return;
+                }
+
+                let result = unsafe { gpio_set_level(pin_number as _, inactive_level) };
+                if result == ESP_OK {
+                    state.store(false, Ordering::Release);
+                } else {
+                    error!(
+                        "pump watchdog failed to drive GPIO {} inactive: {}",
+                        pin_number, result
+                    );
+                }
+
+                if event_sender.send(HardwareEvent::PumpSafetyTimeout).is_err() {
+                    error!("pump watchdog could not notify control runtime");
+                }
+            })
+            .context("create pump safety timer")?;
+
+        Ok(Self {
+            output,
+            safety_timer,
+        })
+    }
+}
+
+impl Actuator for PumpOutput<'_> {
+    fn set(&mut self, on: bool) -> Result<bool> {
+        self.output.set(on)
+    }
+
+    fn is_on(&self) -> bool {
+        self.output.is_on()
+    }
+}
+
+impl PumpActuator for PumpOutput<'_> {
+    fn arm_safety_timeout(&mut self, duration: Duration) -> Result<()> {
+        self.safety_timer
+            .after(duration)
+            .context("arm pump safety timer")
+    }
+
+    fn disarm_safety_timeout(&mut self) -> Result<()> {
+        self.safety_timer
+            .cancel()
+            .context("disarm pump safety timer")?;
+        Ok(())
     }
 }
 
