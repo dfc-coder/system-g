@@ -21,6 +21,7 @@ pub struct IrrigationConfig {
     pub start_below_pct: u8,
     pub target_pct: u8,
     pub pump_pulse_seconds: u16,
+    pub pump_maximum_seconds: u16,
     pub absorption_minutes: u16,
     pub max_pulses_per_cycle: u8,
     pub only_when_lights_off: bool,
@@ -52,6 +53,7 @@ impl Default for SystemConfig {
                 start_below_pct: 30,
                 target_pct: 42,
                 pump_pulse_seconds: 8,
+                pump_maximum_seconds: 15,
                 absorption_minutes: 5,
                 max_pulses_per_cycle: 3,
                 only_when_lights_off: true,
@@ -68,6 +70,7 @@ pub enum ConfigError {
     InvalidSamplingInterval,
     InvalidSoilThresholds,
     InvalidPumpPulse,
+    InvalidPumpMaximum,
     InvalidAbsorptionTime,
     InvalidPulseLimit,
 }
@@ -93,6 +96,9 @@ impl SystemConfig {
         }
         if self.irrigation.pump_pulse_seconds == 0 {
             return Err(ConfigError::InvalidPumpPulse);
+        }
+        if self.irrigation.pump_maximum_seconds < self.irrigation.pump_pulse_seconds {
+            return Err(ConfigError::InvalidPumpMaximum);
         }
         if self.irrigation.absorption_minutes == 0 {
             return Err(ConfigError::InvalidAbsorptionTime);
@@ -121,5 +127,12 @@ mod tests {
             config.validate(),
             Err(ConfigError::InvalidFanTemperatureHysteresis)
         );
+    }
+
+    #[test]
+    fn rejects_pump_maximum_shorter_than_normal_pulse() {
+        let mut config = SystemConfig::default();
+        config.irrigation.pump_maximum_seconds = config.irrigation.pump_pulse_seconds - 1;
+        assert_eq!(config.validate(), Err(ConfigError::InvalidPumpMaximum));
     }
 }
