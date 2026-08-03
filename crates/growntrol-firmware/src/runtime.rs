@@ -1,23 +1,27 @@
-use std::thread;
+use std::collections::VecDeque;
+use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use growntrol_core::{
     evaluate_fan, evaluate_lighting, seconds_until_minute, DeadlineScheduler, FanState,
-    IrrigationAction, IrrigationDecision, IrrigationEvent, IrrigationMachine, ScheduledEventKind,
-    SystemConfig, TankState,
+    IrrigationAction, IrrigationBlockReason, IrrigationEvent, IrrigationMachine,
+    ScheduledEventKind, SystemConfig, TankState,
 };
 use log::{error, info, warn};
 
-use crate::ports::{Actuator, ClimateSensor, SoilSensor, TankSensor, WallClock};
+use crate::ports::{
+    Actuator, ClimateSensor, HardwareEvent, PumpActuator, SoilSensor, TankSensor, WallClock,
+};
 
 pub struct Runtime<'a> {
     config: SystemConfig,
     scheduler: DeadlineScheduler,
     irrigation: IrrigationMachine,
+    hardware_events: Receiver<HardwareEvent>,
     lights: &'a mut dyn Actuator,
     fans: &'a mut dyn Actuator,
-    pump: &'a mut dyn Actuator,
+    pump: &'a mut dyn PumpActuator,
     climate: &'a mut dyn ClimateSensor,
     soil: &'a mut dyn SoilSensor,
     tank: &'a mut dyn TankSensor,
@@ -28,9 +32,10 @@ impl<'a> Runtime<'a> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: SystemConfig,
+        hardware_events: Receiver<HardwareEvent>,
         lights: &'a mut dyn Actuator,
         fans: &'a mut dyn Actuator,
-        pump: &'a mut dyn Actuator,
+        pump: &'a mut dyn PumpActuator,
         climate: &'a mut dyn ClimateSensor,
         soil: &'a mut dyn SoilSensor,
         tank: &'a mut dyn TankSensor,
@@ -41,6 +46,7 @@ impl<'a> Runtime<'a> {
             config,
             scheduler: DeadlineScheduler::default(),
             irrigation: IrrigationMachine::default(),
+            hardware_events,
             lights,
             fans,
             pump,
@@ -59,35 +65,53 @@ impl<'a> Runtime<'a> {
         self.reconcile_lighting(false)?;
 
         loop {
+            self.process_due_events()?;
+
             let now = monotonic_seconds();
-            let due = self.scheduler.take_due(now);
+            let wait = self
+                .scheduler
+                .next_due_at()
+                .map(|deadline| Duration::from_secs(deadline.saturating_sub(now)))
+                .unwrap_or_else(|| Duration::from_secs(60));
 
-            if due.is_empty() {
-                let sleep_seconds = self
-                    .scheduler
-                    .next_due_at()
-                    .map(|deadline| deadline.saturating_sub(now).max(1))
-                    .unwrap_or(1);
-                thread::sleep(Duration::from_secs(sleep_seconds));
-                continue;
-            }
-
-            for event in due {
-                if let Err(error) = self.handle_scheduled(event) {
-                    error!("scheduled event {event:?} failed: {error:#}");
-                    if self.pump.is_on() {
-                        self.pump.set(false)?;
-                    }
+            match self.hardware_events.recv_timeout(wait) {
+                Ok(event) => self.handle_hardware_event(event)?,
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) => {
+                    return Err(anyhow!("hardware event channel disconnected"));
                 }
             }
         }
     }
 
+    fn process_due_events(&mut self) -> Result<()> {
+        let due = self.scheduler.take_due(monotonic_seconds());
+        for event in due {
+            if let Err(event_error) = self.handle_scheduled(event) {
+                error!("scheduled event {event:?} failed: {event_error:#}");
+                self.handle_irrigation(IrrigationEvent::Abort(
+                    IrrigationBlockReason::HardwareFault,
+                ))?;
+            }
+        }
+        Ok(())
+    }
+
     fn fail_safe_outputs(&mut self) -> Result<()> {
+        self.pump.disarm_safety_timeout()?;
         self.pump.set(false)?;
         self.lights.set(false)?;
         self.fans.set(false)?;
         Ok(())
+    }
+
+    fn handle_hardware_event(&mut self, event: HardwareEvent) -> Result<()> {
+        match event {
+            HardwareEvent::PumpSafetyTimeout => {
+                warn!("independent pump safety timer expired");
+                self.handle_irrigation(IrrigationEvent::PumpSafetyTimeout)
+            }
+        }
     }
 
     fn handle_scheduled(&mut self, event: ScheduledEventKind) -> Result<()> {
@@ -96,9 +120,6 @@ impl<'a> Runtime<'a> {
             ScheduledEventKind::ClimateSample => self.sample_climate(),
             ScheduledEventKind::PumpPulseFinished => {
                 self.handle_irrigation(IrrigationEvent::PumpPulseFinished)
-            }
-            ScheduledEventKind::PumpSafetyTimeout => {
-                self.handle_irrigation(IrrigationEvent::PumpSafetyTimeout)
             }
             ScheduledEventKind::AbsorptionFinished => {
                 let moisture = self.soil.read_percent().ok();
@@ -112,10 +133,12 @@ impl<'a> Runtime<'a> {
     fn reconcile_lighting(&mut self, trigger_irrigation: bool) -> Result<()> {
         let date_time = match self.clock.now() {
             Ok(value) => value,
-            Err(error) => {
-                warn!("RTC unavailable; forcing lights and pump off: {error:#}");
+            Err(clock_error) => {
+                warn!("RTC unavailable; forcing lights and irrigation off: {clock_error:#}");
                 self.lights.set(false)?;
-                self.pump.set(false)?;
+                self.handle_irrigation(IrrigationEvent::Abort(
+                    IrrigationBlockReason::ClockFault,
+                ))?;
                 self.scheduler.schedule_after(
                     monotonic_seconds(),
                     60,
@@ -186,8 +209,8 @@ impl<'a> Runtime<'a> {
                     ScheduledEventKind::ClimateSample,
                 );
             }
-            Err(error) => {
-                warn!("DHT22 sample failed: {error:#}");
+            Err(sensor_error) => {
+                warn!("DHT22 sample failed: {sensor_error:#}");
                 self.scheduler.schedule_after(
                     now,
                     u32::from(self.config.fan.alert_sample_minutes) * 60,
@@ -198,39 +221,51 @@ impl<'a> Runtime<'a> {
         Ok(())
     }
 
-    fn handle_irrigation(&mut self, event: IrrigationEvent) -> Result<()> {
-        let decision = self.irrigation.handle(event, self.config.irrigation);
-        info!("irrigation state: {:?}", decision.state);
-        self.apply_irrigation_decision(decision)
-    }
+    fn handle_irrigation(&mut self, initial_event: IrrigationEvent) -> Result<()> {
+        let mut pending = VecDeque::from([initial_event]);
 
-    fn apply_irrigation_decision(&mut self, decision: IrrigationDecision) -> Result<()> {
-        for action in decision.actions {
-            match action {
-                IrrigationAction::SetPump(on) => {
-                    if on && self.lights.is_on() {
-                        warn!("pump-on action rejected because lights are on");
-                        self.handle_irrigation(IrrigationEvent::LightsTurnedOn)?;
-                        continue;
+        while let Some(event) = pending.pop_front() {
+            let decision = self.irrigation.handle(event, self.config.irrigation);
+            info!("irrigation state: {:?}", decision.state);
+
+            for action in decision.actions {
+                match action {
+                    IrrigationAction::SetPump(on) => {
+                        if on && self.lights.is_on() {
+                            warn!("pump-on action rejected because lights are on");
+                            self.pump.disarm_safety_timeout()?;
+                            pending.push_back(IrrigationEvent::Abort(
+                                IrrigationBlockReason::LightsOn,
+                            ));
+                            break;
+                        }
+                        if self.pump.set(on)? {
+                            info!("pump changed: {}", if on { "on" } else { "off" });
+                        }
                     }
-                    if self.pump.set(on)? {
-                        info!("pump changed: {}", if on { "on" } else { "off" });
+                    IrrigationAction::ArmPumpSafety { after_seconds } => {
+                        self.pump
+                            .arm_safety_timeout(Duration::from_secs(u64::from(after_seconds)))?;
                     }
+                    IrrigationAction::DisarmPumpSafety => {
+                        self.pump.disarm_safety_timeout()?;
+                    }
+                    IrrigationAction::MeasureTank => {
+                        let state = self.tank.read().unwrap_or(TankState::SensorFault);
+                        pending.push_back(IrrigationEvent::TankChecked(state));
+                    }
+                    IrrigationAction::Schedule {
+                        after_seconds,
+                        kind,
+                    } => {
+                        self.scheduler
+                            .schedule_after(monotonic_seconds(), after_seconds, kind);
+                    }
+                    IrrigationAction::CancelScheduled(kind) => self.scheduler.cancel(kind),
                 }
-                IrrigationAction::MeasureTank => {
-                    let state = self.tank.read().unwrap_or(TankState::SensorFault);
-                    self.handle_irrigation(IrrigationEvent::TankChecked(state))?;
-                }
-                IrrigationAction::Schedule {
-                    after_seconds,
-                    kind,
-                } => {
-                    self.scheduler
-                        .schedule_after(monotonic_seconds(), after_seconds, kind);
-                }
-                IrrigationAction::CancelScheduled(kind) => self.scheduler.cancel(kind),
             }
         }
+
         Ok(())
     }
 }
