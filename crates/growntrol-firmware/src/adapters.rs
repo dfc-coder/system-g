@@ -1,10 +1,8 @@
 use anyhow::{anyhow, Context, Result};
 use embedded_hal::i2c::I2c;
-use esp_idf_hal::adc::{AdcChannelDriver, AdcDriver, AdcUnit, ADCPin};
+use esp_idf_hal::adc::{ADCPin, AdcChannelDriver, AdcDriver, AdcUnit};
 use esp_idf_hal::delay::{Ets, FreeRtos};
-use esp_idf_hal::gpio::{
-    Input, InputOutput, InputPin, Output, OutputPin, PinDriver, Pull,
-};
+use esp_idf_hal::gpio::{Input, InputOutput, InputPin, Output, OutputPin, PinDriver, Pull};
 use esp_idf_hal::i2c::I2cDriver;
 use esp_idf_hal::sys::adc_atten_t;
 use growntrol_core::{median_sample, ClimateReading, SoilCalibration, TankState};
@@ -74,7 +72,10 @@ impl ClimateSensor for Dht22<'_> {
             .map_err(|error| anyhow!("DHT22 read failed: {error:?}"))?;
 
         anyhow::ensure!(reading.temperature.is_finite(), "invalid DHT22 temperature");
-        anyhow::ensure!(reading.relative_humidity.is_finite(), "invalid DHT22 humidity");
+        anyhow::ensure!(
+            reading.relative_humidity.is_finite(),
+            "invalid DHT22 humidity"
+        );
         anyhow::ensure!(
             (0.0..=100.0).contains(&reading.relative_humidity),
             "DHT22 humidity outside range"
@@ -133,7 +134,9 @@ where
         channel: AdcChannelDriver<'d, ATTENUATION, PIN>,
         calibration: SoilCalibration,
     ) -> Result<Self> {
-        calibration.validate().map_err(|error| anyhow!("{error:?}"))?;
+        calibration
+            .validate()
+            .map_err(|error| anyhow!("{error:?}"))?;
         Ok(Self {
             adc,
             channel,
@@ -142,8 +145,7 @@ where
     }
 }
 
-impl<ADC, PIN, const ATTENUATION: adc_atten_t> SoilSensor
-    for SoilAdc<'_, ADC, PIN, ATTENUATION>
+impl<ADC, PIN, const ATTENUATION: adc_atten_t> SoilSensor for SoilAdc<'_, ADC, PIN, ATTENUATION>
 where
     ADC: AdcUnit,
     PIN: ADCPin<Adc = ADC>,
@@ -151,10 +153,7 @@ where
     fn read_percent(&mut self) -> Result<u8> {
         let mut samples = [0_u16; 7];
         for sample in &mut samples {
-            *sample = self
-                .adc
-                .read(&mut self.channel)
-                .context("read soil ADC")?;
+            *sample = self.adc.read(&mut self.channel).context("read soil ADC")?;
             FreeRtos::delay_ms(25);
         }
 
