@@ -9,11 +9,11 @@ Control and monitoring system for an indoor grow, designed around one classic ES
 - DHT22 sampling every five minutes while stable and every minute near thresholds or while fans are active.
 - Fan hysteresis with relay writes only on state transitions.
 - Soil measurement when lights turn off and five minutes after watering.
-- Seven-sample median filtering and configurable soil calibration.
+- Seven-sample raw ADC median filtering and configurable soil calibration.
 - Tank validation before and after every watering pulse.
-- Irrigation state machine with bounded pulses and an independent pump safety timeout.
+- Irrigation state machine with bounded pulses and an independent ESP timer pump watchdog.
 - ESP32 adapters for GPIO outputs, DHT22, ADC1 soil input, tank float, and DS3231.
-- Event/deadline runtime without a continuous one-second control loop.
+- Event/deadline runtime that blocks until a hardware event or the nearest deadline.
 - Separate host CI and Xtensa ESP32 firmware CI.
 
 The local web dashboard, persistent configuration, Wi-Fi, and MQTT remain subsequent phases.
@@ -47,3 +47,5 @@ Before connecting loads, read:
 - `docs/hardware-integration-checklist.md`
 
 The soil calibration values in the firmware are provisional and must be measured with the actual sensor and substrate.
+
+A successful CI build proves source compatibility with the selected Rust, ESP-IDF, and classic ESP32 target. It does not prove physical wiring, relay polarity, signal voltage, sensor calibration, electrical-noise immunity, or mains safety. Those items require the documented low-voltage hardware integration procedure.
