@@ -58,13 +58,13 @@ mod tests {
     }
 
     #[test]
-    fn cancel_removes_a_pending_safety_timeout() {
+    fn cancel_removes_pending_absorption() {
         let mut scheduler = DeadlineScheduler::default();
-        scheduler.schedule_after(100, 15, ScheduledEventKind::PumpSafetyTimeout);
-        scheduler.cancel(ScheduledEventKind::PumpSafetyTimeout);
+        scheduler.schedule_after(100, 300, ScheduledEventKind::AbsorptionFinished);
+        scheduler.cancel(ScheduledEventKind::AbsorptionFinished);
 
-        assert!(!scheduler.contains(ScheduledEventKind::PumpSafetyTimeout));
-        assert!(scheduler.take_due(200).is_empty());
+        assert!(!scheduler.contains(ScheduledEventKind::AbsorptionFinished));
+        assert!(scheduler.take_due(500).is_empty());
     }
 
     #[test]
