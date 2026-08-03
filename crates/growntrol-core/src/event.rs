@@ -18,7 +18,6 @@ pub enum ScheduledEventKind {
     LightTransition,
     ClimateSample,
     PumpPulseFinished,
-    PumpSafetyTimeout,
     AbsorptionFinished,
 }
 
