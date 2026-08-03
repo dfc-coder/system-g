@@ -7,9 +7,7 @@ use anyhow::{anyhow, Context, Result};
 use embedded_hal::i2c::I2c;
 use esp_idf_hal::adc::{AdcChannel, AdcChannelDriver, AdcDriver, AdcUnit};
 use esp_idf_hal::delay::{Ets, FreeRtos};
-use esp_idf_hal::gpio::{
-    Input, InputOutput, InputPin, Output, OutputPin, Pin, PinDriver, Pull,
-};
+use esp_idf_hal::gpio::{Input, InputOutput, InputPin, Output, OutputPin, Pin, PinDriver, Pull};
 use esp_idf_hal::i2c::I2cDriver;
 use esp_idf_hal::sys::{adc_atten_t, gpio_set_level, ESP_OK};
 use esp_idf_svc::timer::{EspTaskTimerService, EspTimer};
@@ -56,7 +54,11 @@ impl<'d> ActiveOutput<'d> {
     }
 
     fn inactive_level(&self) -> u32 {
-        if self.active_low { 1 } else { 0 }
+        if self.active_low {
+            1
+        } else {
+            0
+        }
     }
 
     fn state_handle(&self) -> Arc<AtomicBool> {
@@ -227,8 +229,7 @@ where
     calibration: SoilCalibration,
 }
 
-impl<'d, ADC, CHANNEL, const ATTENUATION: adc_atten_t>
-    SoilAdc<'d, ADC, CHANNEL, ATTENUATION>
+impl<'d, ADC, CHANNEL, const ATTENUATION: adc_atten_t> SoilAdc<'d, ADC, CHANNEL, ATTENUATION>
 where
     ADC: AdcUnit,
     CHANNEL: AdcChannel<AdcUnit = ADC>,
