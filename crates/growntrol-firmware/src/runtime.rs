@@ -129,7 +129,10 @@ impl<'a> Runtime<'a> {
         let was_on = self.lights.is_on();
         let changed = self.lights.set(decision.lights_on)?;
         if changed {
-            info!("lights changed: {}", if decision.lights_on { "on" } else { "off" });
+            info!(
+                "lights changed: {}",
+                if decision.lights_on { "on" } else { "off" }
+            );
         }
 
         let after = seconds_until_minute(
