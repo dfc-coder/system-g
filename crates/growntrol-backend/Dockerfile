@@ -5,6 +5,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY crates/growntrol-core crates/growntrol-core
 COPY crates/growntrol-protocol crates/growntrol-protocol
 COPY crates/growntrol-backend crates/growntrol-backend
+COPY crates/growntrol-simulator crates/growntrol-simulator
 
 RUN cargo build --release -p growntrol-backend
 
