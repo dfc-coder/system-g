@@ -6,7 +6,12 @@ pub struct DeadlineScheduler {
 }
 
 impl DeadlineScheduler {
-    pub fn schedule_after(&mut self, now_seconds: u64, after_seconds: u32, kind: ScheduledEventKind) {
+    pub fn schedule_after(
+        &mut self,
+        now_seconds: u64,
+        after_seconds: u32,
+        kind: ScheduledEventKind,
+    ) {
         self.cancel(kind);
         self.events.push(ScheduledEvent {
             due_at_seconds: now_seconds.saturating_add(u64::from(after_seconds)),
@@ -23,10 +28,7 @@ impl DeadlineScheduler {
         let split = self
             .events
             .partition_point(|event| event.due_at_seconds <= now_seconds);
-        self.events
-            .drain(..split)
-            .map(|event| event.kind)
-            .collect()
+        self.events.drain(..split).map(|event| event.kind).collect()
     }
 
     pub fn next_due_at(&self) -> Option<u64> {
