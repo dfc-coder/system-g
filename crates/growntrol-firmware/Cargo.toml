@@ -10,7 +10,7 @@ publish = false
 anyhow = "1"
 dht-sensor = "0.3"
 embedded-hal = "1"
-esp-idf-hal = { version = "0.46", features = ["adc-oneshot-legacy"] }
+esp-idf-hal = "0.46"
 esp-idf-svc = "0.52.1"
 growntrol-core = { path = "../growntrol-core" }
 log = "0.4"
