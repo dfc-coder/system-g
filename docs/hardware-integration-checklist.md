@@ -2,7 +2,7 @@
 
 Run these checks with mains voltage disconnected. Use LEDs, a multimeter, or low-voltage dummy loads first.
 
-## 1. Build and flash
+## 1. Build, flash, and driver smoke test
 
 From `crates/growntrol-firmware`:
 
@@ -16,6 +16,16 @@ Expected startup log:
 ```text
 Growntrol firmware starting
 ```
+
+Pass conditions with only the ESP32 connected:
+
+- firmware flashes and starts normally;
+- the runtime remains active without restarting;
+- disconnected RTC and DHT22 errors are reported and retried;
+- the log does not contain `i2c: This driver is an old driver`;
+- the log does not contain `ADC: legacy driver is deprecated`.
+
+The firmware uses the ESP-IDF `driver/i2c_master.h` and `esp_adc/adc_oneshot.h` APIs. Suppressing deprecation logs without replacing the underlying drivers does not satisfy this gate.
 
 ## 2. Safe boot outputs
 
@@ -100,6 +110,7 @@ With the pump on its final supply:
 Record:
 
 - exact ESP32 board model;
+- clean startup log without legacy I2C/ADC warnings;
 - relay model and verified polarity;
 - pump voltage/current;
 - calibrated dry/wet raw ADC values;
@@ -108,4 +119,4 @@ Record:
 - watchdog fault-injection result;
 - pass/fail result for every section above.
 
-This checklist is the physical integration gate. CI compilation alone does not prove wiring, polarity, voltage compatibility, sensor calibration, or mains safety.
+This checklist is the physical integration gate. CI compilation alone does not prove wiring, polarity, voltage compatibility, sensor calibration, electrical-noise immunity, or mains safety.
