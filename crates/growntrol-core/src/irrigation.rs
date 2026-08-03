@@ -189,10 +189,7 @@ mod tests {
             },
             config(),
         );
-        let decision = machine.handle(
-            IrrigationEvent::TankChecked(TankState::WaterLow),
-            config(),
-        );
+        let decision = machine.handle(IrrigationEvent::TankChecked(TankState::WaterLow), config());
 
         assert_eq!(
             decision.state,
@@ -231,10 +228,8 @@ mod tests {
         start_pulse(&mut machine);
         machine.handle(IrrigationEvent::PumpPulseFinished, config());
 
-        let tank_decision = machine.handle(
-            IrrigationEvent::TankChecked(TankState::WaterLow),
-            config(),
-        );
+        let tank_decision =
+            machine.handle(IrrigationEvent::TankChecked(TankState::WaterLow), config());
         assert_eq!(
             tank_decision.state,
             IrrigationState::Blocked(IrrigationBlockReason::TankLow)
