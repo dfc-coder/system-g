@@ -1,0 +1,45 @@
+name: Rust core CI
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/**"
+      - ".github/workflows/core-ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/**"
+      - ".github/workflows/core-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: core-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-core:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust 1.77
+        uses: dtolnay/rust-toolchain@1.77.0
+        with:
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Compile core
+        run: cargo check -p growntrol-core --all-targets
+
+      - name: Run core tests
+        run: cargo test -p growntrol-core --all-targets
