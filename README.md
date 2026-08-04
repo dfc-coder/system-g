@@ -17,17 +17,15 @@ Control and monitoring system for an indoor grow, designed around one classic ES
 - Event/deadline runtime that blocks until a hardware event or the nearest deadline.
 - Versioned MQTT topics and JSON payloads shared by devices and services.
 - Rust backend that aggregates MQTT state and exposes HTTP JSON and Server-Sent Events.
-- Vue 3 dashboard for live state, bounded overrides, and safe irrigation requests.
 - Optional MQTT device simulator for end-to-end testing without physical sensors.
-- Local Mosquitto, backend, dashboard, and demo-device stack through Podman Compose.
-- Separate host, firmware, platform, and dashboard CI checks.
+- Local Mosquitto, backend, external dashboard, and demo-device stack through Podman Compose.
+- Separate host, firmware, and platform CI checks.
 
-ESP32 Wi-Fi provisioning and its MQTT transport adapter remain a separate hardware-validated phase. The backend and dashboard never drive GPIO directly.
+The Vue dashboard now lives in the independent repository [`dfc-coder/growntrol-web`](https://github.com/dfc-coder/growntrol-web). ESP32 Wi-Fi provisioning and its MQTT transport adapter remain a separate hardware-validated phase. The backend and dashboard never drive GPIO directly.
 
 ## Repository layout
 
 ```text
-apps/growntrol-dashboard/     Vue 3 and Vite operational dashboard
 crates/growntrol-backend/     MQTT-to-HTTP/SSE Rust backend
 crates/growntrol-core/        Host-testable domain rules
 crates/growntrol-firmware/    ESP-IDF firmware for classic ESP32
@@ -48,15 +46,24 @@ cargo test \
   -p growntrol-simulator
 ```
 
-## Build the dashboard
+## Prepare the local repositories
 
-```bash
-cd apps/growntrol-dashboard
-npm install
-npm run build
+Clone both repositories as siblings:
+
+```text
+projects/
+├── system-g/
+└── growntrol-web/
 ```
 
-Node.js 20.19 or newer is required by the selected Vite version.
+Example:
+
+```bash
+cd ~/Documents/projects
+git clone https://github.com/dfc-coder/growntrol-web.git
+```
+
+The Compose file uses `../growntrol-web` by default. A different checkout location can be supplied through `GROWNTROL_WEB_CONTEXT`.
 
 ## Run the local platform with Podman
 
@@ -66,21 +73,13 @@ Verify that a Compose provider is available:
 podman compose version
 ```
 
-Start the broker, backend, and dashboard:
-
-```bash
-podman compose up --build
-```
-
-Start the same platform with a simulated Growntrol device:
+Start the broker, backend, external dashboard, and simulated device:
 
 ```bash
 podman compose --profile demo up --build
 ```
 
-If the `podman compose` wrapper is unavailable but `podman-compose` is installed, use the same commands replacing `podman compose` with `podman-compose`.
-
-The simulator publishes retained availability and telemetry, receives dashboard commands, and publishes acknowledgements. It does not represent physical safety validation or replace the ESP32 control engine.
+If the `podman compose` wrapper is unavailable but `podman-compose` is installed, use the same command replacing `podman compose` with `podman-compose`.
 
 Services:
 
@@ -93,6 +92,8 @@ Stop the complete demo stack with:
 ```bash
 podman compose --profile demo down
 ```
+
+The simulator publishes retained availability and telemetry, receives dashboard commands, and publishes acknowledgements. It does not represent physical safety validation or replace the ESP32 control engine.
 
 The included Mosquitto configuration permits anonymous access only for local development. A network-exposed deployment must use authentication, authorization, and TLS.
 
