@@ -6,6 +6,8 @@ Expose Growntrol state through a versioned MQTT contract, aggregate the latest d
 
 This phase establishes the platform boundary before the ESP32 Wi-Fi/MQTT transport is enabled. A simulator or future firmware client can publish the same protocol without changing the backend or dashboard.
 
+The dashboard is maintained independently in `dfc-coder/growntrol-web`. This repository owns firmware, protocol, backend, simulator, broker configuration, and orchestration only.
+
 ## Architecture
 
 ```text
@@ -18,10 +20,18 @@ Mosquitto broker
 Rust backend (rumqttc + Axum)
       │ HTTP JSON + SSE
       ▼
-Vue 3 / Vite dashboard
+growntrol-web (Vue 3 / Vite)
 ```
 
 The broker is transport only. The backend does not replace the ESP32 control engine and does not drive GPIO directly.
+
+## Repository boundary
+
+- `system-g` owns the MQTT contract, backend API, simulator, broker, firmware, and Podman Compose orchestration.
+- `growntrol-web` owns Vue, Vite, TypeScript, Nginx, frontend CI, and the dashboard image definition.
+- The local default layout places both repositories as siblings.
+- `GROWNTROL_WEB_CONTEXT` may override the dashboard build context for CI or a different checkout layout.
+- The dashboard reads an optional `VITE_API_BASE_URL`; an empty value uses the same-origin Nginx or Vite proxy.
 
 ## MQTT namespace
 
@@ -82,8 +92,8 @@ Telemetry and commands use JSON with `schema_version = 1`.
 
 - Protocol topic parsing and command JSON round trips are covered by Rust tests.
 - Backend formatting, compilation, and tests pass on stable Rust.
-- Dashboard production build passes on Node 20.19 or newer.
-- A local Mosquitto broker, backend, and dashboard can be started without committing credentials.
+- The independent `growntrol-web` CI builds the frontend and its Podman-compatible OCI image.
+- A local Mosquitto broker, backend, external dashboard checkout, and simulator can be started without committing credentials.
 - Publishing a telemetry snapshot causes the device to appear through the HTTP API and dashboard.
 - Posting a dashboard command publishes a versioned command envelope on the matching device topic.
 - No backend or dashboard code contains direct hardware-control logic.
