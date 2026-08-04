@@ -73,5 +73,6 @@ jobs:
 
       - name: Run broker, backend, simulator, and dashboard smoke test
         env:
+          GROWNTROL_COMPOSE_PROVIDER: docker
           GROWNTROL_WEB_CONTEXT: ./growntrol-web
         run: bash scripts/platform-smoke-test.sh
