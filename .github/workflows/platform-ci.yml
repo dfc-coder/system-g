@@ -1,0 +1,78 @@
+name: Platform CI
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/growntrol-protocol/**"
+      - "crates/growntrol-backend/**"
+      - "crates/growntrol-simulator/**"
+      - "deploy/**"
+      - "scripts/platform-smoke-test.sh"
+      - "compose.yaml"
+      - "specs/005-mqtt-backend-dashboard.md"
+      - ".github/workflows/platform-ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/growntrol-protocol/**"
+      - "crates/growntrol-backend/**"
+      - "crates/growntrol-simulator/**"
+      - "deploy/**"
+      - "scripts/platform-smoke-test.sh"
+      - "compose.yaml"
+      - "specs/005-mqtt-backend-dashboard.md"
+      - ".github/workflows/platform-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-platform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Compile platform crates
+        run: cargo check -p growntrol-protocol -p growntrol-backend -p growntrol-simulator --all-targets
+
+      - name: Test platform crates
+        run: cargo test -p growntrol-protocol -p growntrol-backend -p growntrol-simulator --all-targets
+
+  integration:
+    needs: [rust-platform]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout system repository
+        uses: actions/checkout@v5
+
+      - name: Checkout dashboard repository
+        uses: actions/checkout@v5
+        with:
+          repository: dfc-coder/growntrol-web
+          path: growntrol-web
+
+      - name: Run broker, backend, simulator, and dashboard smoke test
+        env:
+          GROWNTROL_COMPOSE_PROVIDER: docker
+          GROWNTROL_WEB_CONTEXT: ./growntrol-web
+        run: bash scripts/platform-smoke-test.sh

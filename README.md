@@ -15,24 +15,97 @@ Control and monitoring system for an indoor grow, designed around one classic ES
 - ESP32 adapters for GPIO outputs, DHT22, ADC1 soil input, tank float, and DS3231.
 - Current ESP-IDF `esp_adc/adc_oneshot.h` and `driver/i2c_master.h` APIs instead of deprecated legacy ADC/I2C drivers.
 - Event/deadline runtime that blocks until a hardware event or the nearest deadline.
-- Separate host CI and Xtensa ESP32 firmware CI.
+- Versioned MQTT topics and JSON payloads shared by devices and services.
+- Rust backend that aggregates MQTT state and exposes HTTP JSON and Server-Sent Events.
+- Optional MQTT device simulator for end-to-end testing without physical sensors.
+- Local Mosquitto, backend, external dashboard, and demo-device stack through Podman Compose.
+- Separate host, firmware, and platform CI checks.
 
-The local web dashboard, persistent configuration, Wi-Fi, and MQTT remain subsequent phases.
+The Vue dashboard now lives in the independent repository [`dfc-coder/growntrol-web`](https://github.com/dfc-coder/growntrol-web). ESP32 Wi-Fi provisioning and its MQTT transport adapter remain a separate hardware-validated phase. The backend and dashboard never drive GPIO directly.
 
 ## Repository layout
 
 ```text
-crates/growntrol-core/       Host-testable domain rules
-crates/growntrol-firmware/   ESP-IDF firmware for classic ESP32
-specs/                       SDD specifications
-docs/                        Wiring and hardware integration procedures
+crates/growntrol-backend/     MQTT-to-HTTP/SSE Rust backend
+crates/growntrol-core/        Host-testable domain rules
+crates/growntrol-firmware/    ESP-IDF firmware for classic ESP32
+crates/growntrol-protocol/    Shared MQTT topics and payload contracts
+crates/growntrol-simulator/   End-to-end MQTT demonstration device
+deploy/                       Local broker configuration
+specs/                        SDD specifications
+docs/                         Wiring and hardware integration procedures
 ```
 
-## Test the domain
+## Test the Rust code
 
 ```bash
-cargo test -p growntrol-core
+cargo test \
+  -p growntrol-core \
+  -p growntrol-protocol \
+  -p growntrol-backend \
+  -p growntrol-simulator
 ```
+
+## Prepare the local repositories
+
+Clone both repositories as siblings:
+
+```text
+projects/
+├── system-g/
+└── growntrol-web/
+```
+
+Example:
+
+```bash
+cd ~/Documents/projects
+git clone https://github.com/dfc-coder/growntrol-web.git
+```
+
+The Compose file uses `../growntrol-web` by default. A different checkout location can be supplied through `GROWNTROL_WEB_CONTEXT`.
+
+## Run the local platform with Podman
+
+Verify that a Compose provider is available:
+
+```bash
+podman compose version
+```
+
+Start the broker, backend, external dashboard, and simulated device:
+
+```bash
+podman compose --profile demo up --build
+```
+
+If the `podman compose` wrapper is unavailable but `podman-compose` is installed, use the same command replacing `podman compose` with `podman-compose`.
+
+Services:
+
+- MQTT broker: `localhost:1883`
+- Backend API and SSE: `http://localhost:8080`
+- Dashboard: `http://localhost:5173`
+
+Stop the complete demo stack with:
+
+```bash
+podman compose --profile demo down
+```
+
+The simulator publishes retained availability and telemetry, receives dashboard commands, and publishes acknowledgements. It does not represent physical safety validation or replace the ESP32 control engine.
+
+The included Mosquitto configuration permits anonymous access only for local development. A network-exposed deployment must use authentication, authorization, and TLS.
+
+## MQTT contract
+
+Device topics are rooted at:
+
+```text
+growntrol/v1/devices/{device_id}
+```
+
+The detailed topic directions, retention rules, payloads, and command safety boundary are defined in `specs/005-mqtt-backend-dashboard.md`.
 
 ## Build and flash the ESP32 firmware
 
