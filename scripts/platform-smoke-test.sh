@@ -1,16 +1,33 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if podman compose version >/dev/null 2>&1; then
-  compose=(podman compose --profile demo)
-elif command -v podman-compose >/dev/null 2>&1; then
-  compose=(podman-compose --profile demo)
-elif docker compose version >/dev/null 2>&1; then
-  compose=(docker compose --profile demo)
-else
-  printf 'No Compose provider found. Install Podman Compose or Docker Compose.\n' >&2
-  exit 1
-fi
+case "${GROWNTROL_COMPOSE_PROVIDER:-auto}" in
+  podman)
+    compose=(podman compose --profile demo)
+    ;;
+  podman-compose)
+    compose=(podman-compose --profile demo)
+    ;;
+  docker)
+    compose=(docker compose --profile demo)
+    ;;
+  auto)
+    if command -v podman-compose >/dev/null 2>&1; then
+      compose=(podman-compose --profile demo)
+    elif podman compose version >/dev/null 2>&1; then
+      compose=(podman compose --profile demo)
+    elif docker compose version >/dev/null 2>&1; then
+      compose=(docker compose --profile demo)
+    else
+      printf 'No Compose provider found. Install Podman Compose or Docker Compose.\n' >&2
+      exit 1
+    fi
+    ;;
+  *)
+    printf 'Unsupported GROWNTROL_COMPOSE_PROVIDER: %s\n' "$GROWNTROL_COMPOSE_PROVIDER" >&2
+    exit 1
+    ;;
+esac
 
 cleanup() {
   "${compose[@]}" logs --no-color || true
