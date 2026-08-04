@@ -8,7 +8,6 @@ on:
       - "crates/growntrol-protocol/**"
       - "crates/growntrol-backend/**"
       - "crates/growntrol-simulator/**"
-      - "apps/growntrol-dashboard/**"
       - "deploy/**"
       - "scripts/platform-smoke-test.sh"
       - "compose.yaml"
@@ -23,7 +22,6 @@ on:
       - "crates/growntrol-protocol/**"
       - "crates/growntrol-backend/**"
       - "crates/growntrol-simulator/**"
-      - "apps/growntrol-dashboard/**"
       - "deploy/**"
       - "scripts/platform-smoke-test.sh"
       - "compose.yaml"
@@ -59,34 +57,21 @@ jobs:
       - name: Test platform crates
         run: cargo test -p growntrol-protocol -p growntrol-backend -p growntrol-simulator --all-targets
 
-  dashboard:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: apps/growntrol-dashboard
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: Install Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Install dashboard dependencies
-        run: npm install
-
-      - name: Build dashboard
-        run: npm run build
-
   integration:
-    needs: [rust-platform, dashboard]
+    needs: [rust-platform]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout repository
+      - name: Checkout system repository
         uses: actions/checkout@v5
 
+      - name: Checkout dashboard repository
+        uses: actions/checkout@v5
+        with:
+          repository: dfc-coder/growntrol-web
+          path: growntrol-web
+
       - name: Run broker, backend, simulator, and dashboard smoke test
+        env:
+          GROWNTROL_WEB_CONTEXT: ./growntrol-web
         run: bash scripts/platform-smoke-test.sh
