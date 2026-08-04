@@ -25,7 +25,8 @@ services:
 
   dashboard:
     build:
-      context: apps/growntrol-dashboard
+      context: ${GROWNTROL_WEB_CONTEXT:-../growntrol-web}
+      dockerfile: Dockerfile
     restart: unless-stopped
     depends_on:
       - backend
